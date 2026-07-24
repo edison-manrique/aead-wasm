@@ -1,0 +1,53 @@
+{
+  "name": "aead-wasm",
+  "version": "1.0.0",
+  "description": "ChaCha20-Poly1305 AEAD de alto rendimiento compilado en AssemblyScript/WASM con wrapper TypeScript zero-alloc.",
+  "author": "Edison Manrique",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "asbuild": "asc assembly/index.ts --target release",
+    "asbuild:debug": "asc assembly/index.ts --target debug",
+    "build:ts": "esbuild src/index.ts --bundle --format=esm --minify --platform=browser --outfile=dist/index.js && tsc --emitDeclarationOnly",
+    "build": "npm run asbuild && npm run build:ts",
+    "prepublishOnly": "npm run build",
+    "examples": "bun examples/demo.js"
+  },
+  "keywords": [
+    "wasm",
+    "webassembly",
+    "cryptography",
+    "chacha20",
+    "xchacha20",
+    "poly1305",
+    "chacha20-poly1305",
+    "xchacha20-poly1305",
+    "aead",
+    "assemblyscript",
+    "zero-alloc"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/edison-manrique/aead-wasm.git"
+  },
+  "bugs": {
+    "url": "https://github.com/edison-manrique/aead-wasm/issues"
+  },
+  "homepage": "https://github.com/edison-manrique/aead-wasm#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

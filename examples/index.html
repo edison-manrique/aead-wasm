@@ -1,0 +1,999 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AEAD WASM — Crypto Lab</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg: #0a0d14;
+        --surface: #0f1421;
+        --card: #141929;
+        --border: #1e2740;
+        --border2: #2a3558;
+        --text: #e2e8f0;
+        --muted: #64748b;
+        --accent: #6366f1;
+        --accent2: #8b5cf6;
+        --green: #10b981;
+        --red: #ef4444;
+        --yellow: #f59e0b;
+        --cyan: #06b6d4;
+        --pink: #ec4899;
+        --orange: #f97316;
+        --mono: "JetBrains Mono", monospace;
+      }
+
+      html,
+      body {
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Inter", sans-serif;
+        font-size: 13px;
+      }
+
+      /* ── Layout ── */
+      .app {
+        display: grid;
+        grid-template-rows: 52px 1fr;
+        height: 100vh;
+        width: 100vw;
+      }
+
+      /* ── Header ── */
+      header {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 0 24px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        backdrop-filter: blur(8px);
+        z-index: 10;
+      }
+      .logo {
+        width: 30px;
+        height: 30px;
+        background: linear-gradient(135deg, var(--accent), var(--accent2));
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        font-size: 15px;
+        flex-shrink: 0;
+      }
+      header h1 {
+        font-size: 15px;
+        font-weight: 600;
+        background: linear-gradient(90deg, var(--text), var(--accent2));
+        -moz-background-clip: text;
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .badge {
+        font-family: var(--mono);
+        font-size: 10px;
+        padding: 2px 8px;
+        border-radius: 20px;
+        border: 1px solid var(--border2);
+        color: var(--muted);
+      }
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--muted);
+        margin-left: auto;
+        transition: background 0.3s;
+        box-shadow: 0 0 0 3px rgba(100, 116, 139, 0.15);
+      }
+      .status-dot.ok {
+        background: var(--green);
+        box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+      }
+      .status-dot.err {
+        background: var(--red);
+        box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+      }
+      .status-dot.spin {
+        background: var(--yellow);
+        box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
+        animation: pulse 1s infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+      }
+      .status-label {
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      /* ── Grid de 5 bloques ── */
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 0;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      /* ── Bloque / Card ── */
+      .block {
+        display: flex;
+        flex-direction: column;
+        border-right: 1px solid var(--border);
+        background: var(--card);
+        overflow: hidden;
+        transition: background 0.2s;
+      }
+      .block:last-child {
+        border-right: none;
+      }
+      .block:hover {
+        background: #161c2e;
+      }
+
+      .block-header {
+        padding: 14px 16px 12px;
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      .block-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 4px;
+      }
+      .block-icon {
+        width: 24px;
+        height: 24px;
+        border-radius: 6px;
+        display: grid;
+        place-items: center;
+        font-size: 12px;
+        flex-shrink: 0;
+      }
+      .c1 .block-icon {
+        background: rgba(99, 102, 241, 0.2);
+        color: var(--accent);
+      }
+      .c2 .block-icon {
+        background: rgba(6, 182, 212, 0.2);
+        color: var(--cyan);
+      }
+      .c3 .block-icon {
+        background: rgba(139, 92, 246, 0.2);
+        color: var(--accent2);
+      }
+      .c4 .block-icon {
+        background: rgba(16, 185, 129, 0.2);
+        color: var(--green);
+      }
+      .c5 .block-icon {
+        background: rgba(249, 115, 22, 0.2);
+        color: var(--orange);
+      }
+
+      .block-name {
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      .c1 .block-name {
+        color: var(--accent);
+      }
+      .c2 .block-name {
+        color: var(--cyan);
+      }
+      .c3 .block-name {
+        color: var(--accent2);
+      }
+      .c4 .block-name {
+        color: var(--green);
+      }
+      .c5 .block-name {
+        color: var(--orange);
+      }
+
+      .block-subtitle {
+        font-size: 10px;
+        color: var(--muted);
+        font-family: var(--mono);
+      }
+
+      /* ── Scroll body ── */
+      .block-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .block-body::-webkit-scrollbar {
+        width: 4px;
+      }
+      .block-body::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .block-body::-webkit-scrollbar-thumb {
+        background: var(--border2);
+        border-radius: 4px;
+      }
+
+      /* ── Field ── */
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .field label {
+        font-size: 10px;
+        font-weight: 500;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      textarea,
+      input[type="text"] {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 11px;
+        padding: 6px 8px;
+        resize: none;
+        outline: none;
+        width: 100%;
+        transition: border-color 0.2s;
+        line-height: 1.5;
+      }
+      textarea:focus,
+      input:focus {
+        border-color: var(--border2);
+      }
+      textarea {
+        min-height: 48px;
+      }
+
+      /* ── Buttons ── */
+      .btn-row {
+        display: flex;
+        gap: 6px;
+        flex-shrink: 0;
+      }
+      .btn {
+        flex: 1;
+        padding: 7px 10px;
+        border: none;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+        letter-spacing: 0.02em;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+      }
+      .btn:active {
+        transform: scale(0.97);
+      }
+      .btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .btn-encrypt {
+        background: linear-gradient(135deg, var(--accent), var(--accent2));
+        color: #fff;
+        box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
+      }
+      .btn-encrypt:hover:not(:disabled) {
+        box-shadow: 0 4px 16px rgba(99, 102, 241, 0.35);
+        transform: translateY(-1px);
+      }
+
+      .c2 .btn-encrypt {
+        background: linear-gradient(135deg, var(--cyan), #0ea5e9);
+        box-shadow: 0 2px 8px rgba(6, 182, 212, 0.25);
+      }
+      .c2 .btn-encrypt:hover:not(:disabled) {
+        box-shadow: 0 4px 16px rgba(6, 182, 212, 0.35);
+      }
+
+      .c3 .btn-encrypt {
+        background: linear-gradient(135deg, var(--accent2), var(--pink));
+        box-shadow: 0 2px 8px rgba(139, 92, 246, 0.25);
+      }
+      .c3 .btn-encrypt:hover:not(:disabled) {
+        box-shadow: 0 4px 16px rgba(139, 92, 246, 0.35);
+      }
+
+      .c4 .btn-encrypt {
+        background: linear-gradient(135deg, var(--green), #059669);
+        box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
+      }
+      .c4 .btn-encrypt:hover:not(:disabled) {
+        box-shadow: 0 4px 16px rgba(16, 185, 129, 0.35);
+      }
+
+      .c5 .btn-encrypt {
+        background: linear-gradient(135deg, var(--orange), var(--yellow));
+        box-shadow: 0 2px 8px rgba(249, 115, 22, 0.25);
+      }
+      .c5 .btn-encrypt:hover:not(:disabled) {
+        box-shadow: 0 4px 16px rgba(249, 115, 22, 0.35);
+      }
+
+      .btn-decrypt {
+        background: var(--surface);
+        color: var(--text);
+        border: 1px solid var(--border2);
+      }
+      .btn-decrypt:hover:not(:disabled) {
+        background: var(--border);
+      }
+
+      .btn-rand {
+        padding: 7px;
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--muted);
+        border-radius: 6px;
+        font-size: 11px;
+        cursor: pointer;
+        transition: all 0.15s;
+        flex: 0 0 auto;
+      }
+      .btn-rand:hover {
+        border-color: var(--border2);
+        color: var(--text);
+      }
+
+      /* ── Result ── */
+      .result {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 8px;
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--muted);
+        word-break: break-all;
+        line-height: 1.6;
+        min-height: 44px;
+        position: relative;
+        transition: border-color 0.2s;
+      }
+      .result.ok {
+        border-color: rgba(16, 185, 129, 0.4);
+        color: var(--green);
+      }
+      .result.err {
+        border-color: rgba(239, 68, 68, 0.4);
+        color: var(--red);
+      }
+      .result.info {
+        border-color: rgba(99, 102, 241, 0.4);
+        color: var(--text);
+      }
+      .result-label {
+        position: absolute;
+        top: -8px;
+        left: 8px;
+        background: var(--surface);
+        font-size: 9px;
+        font-weight: 600;
+        padding: 0 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .result.ok .result-label {
+        color: var(--green);
+      }
+      .result.err .result-label {
+        color: var(--red);
+      }
+      .result.info .result-label {
+        color: var(--accent);
+      }
+
+      .divider {
+        height: 1px;
+        background: var(--border);
+        flex-shrink: 0;
+      }
+
+      /* ── Verify badge ── */
+      .verify-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 10px;
+        font-weight: 600;
+        padding: 4px 8px;
+        border-radius: 20px;
+        letter-spacing: 0.03em;
+      }
+      .verify-badge.ok {
+        background: rgba(16, 185, 129, 0.15);
+        color: var(--green);
+      }
+      .verify-badge.err {
+        background: rgba(239, 68, 68, 0.15);
+        color: var(--red);
+      }
+
+      /* ── Loading overlay ── */
+      #loading {
+        position: fixed;
+        inset: 0;
+        background: var(--bg);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        z-index: 100;
+        transition: opacity 0.4s;
+      }
+      #loading.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .spinner {
+        width: 36px;
+        height: 36px;
+        border: 3px solid var(--border);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      #loading p {
+        color: var(--muted);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Loading overlay -->
+    <div id="loading">
+      <div class="spinner"></div>
+      <p>Cargando aead-wasm desde NPM...</p>
+    </div>
+
+    <div class="app">
+      <!-- Header -->
+      <header>
+        <div class="logo">🔐</div>
+        <h1>AEAD WASM — Crypto Lab</h1>
+        <span class="badge">v1.0.0</span>
+        <span class="badge" style="margin-left: 4px">npm:aead-wasm</span>
+        <div id="status-dot" class="status-dot spin" style="margin-left: auto"></div>
+        <span id="status-label" class="status-label">Inicializando...</span>
+      </header>
+
+      <!-- 5-block grid -->
+      <div class="grid">
+        <!-- ── Block 1: Poly1305 ── -->
+        <div class="block c1" id="b-poly">
+          <div class="block-header">
+            <div class="block-title">
+              <div class="block-icon">🏷️</div>
+              <span class="block-name">Poly1305</span>
+            </div>
+            <div class="block-subtitle">MAC · RFC 8439 · 16-byte tag</div>
+          </div>
+          <div class="block-body">
+            <div class="field">
+              <label>Mensaje</label>
+              <textarea id="p-msg" rows="3">Hola mundo desde WASM! 🔐</textarea>
+            </div>
+            <div class="field">
+              <label>Clave (hex 32B)</label>
+              <div style="display: flex; gap: 6px">
+                <input type="text" id="p-key" placeholder="64 chars hex..." />
+                <button class="btn-rand" onclick="fillRand('p-key', 32)" title="Generar aleatoria">⚡</button>
+              </div>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-encrypt" id="p-run" onclick="runPoly()">▶ Generar MAC</button>
+            </div>
+            <div class="result" id="p-out">
+              <span class="result-label">TAG</span>
+              <span style="opacity: 0.4">— esperando —</span>
+            </div>
+            <div class="divider"></div>
+            <div class="field">
+              <label>Verificar (misma clave + mensaje → mismo tag)</label>
+              <div id="p-verify" style="display: flex; gap: 6px; flex-wrap: wrap"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Block 2: ChaCha20 ── -->
+        <div class="block c2" id="b-c20">
+          <div class="block-header">
+            <div class="block-title">
+              <div class="block-icon">🌊</div>
+              <span class="block-name">ChaCha20</span>
+            </div>
+            <div class="block-subtitle">Stream cipher · Nonce 12B · RFC 8439</div>
+          </div>
+          <div class="block-body">
+            <div class="field">
+              <label>Plaintext</label>
+              <textarea id="c20-plain" rows="3">Mensaje secreto con ChaCha20 🚀</textarea>
+            </div>
+            <div class="field">
+              <label>Clave (hex 32B)</label>
+              <div style="display: flex; gap: 6px">
+                <input type="text" id="c20-key" placeholder="64 chars hex..." />
+                <button class="btn-rand" onclick="fillRand('c20-key', 32)" title="Generar">⚡</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>Nonce (hex 12B)</label>
+              <div style="display: flex; gap: 6px">
+                <input type="text" id="c20-nonce" placeholder="24 chars hex..." />
+                <button class="btn-rand" onclick="fillRand('c20-nonce', 12)" title="Generar">⚡</button>
+              </div>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-encrypt" id="c20-enc" onclick="runChaCha20Enc()">🔒 Cifrar</button>
+              <button class="btn btn-decrypt" id="c20-dec" onclick="runChaCha20Dec()">🔓 Descifrar</button>
+            </div>
+            <div class="result" id="c20-ct">
+              <span class="result-label">CIPHERTEXT</span>
+              <span style="opacity: 0.4">— esperando —</span>
+            </div>
+            <div class="result" id="c20-pt">
+              <span class="result-label">DECRYPTED</span>
+              <span style="opacity: 0.4">— esperando —</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Block 3: XChaCha20 ── -->
+        <div class="block c3" id="b-xc20">
+          <div class="block-header">
+            <div class="block-title">
+              <div class="block-icon">🌀</div>
+              <span class="block-name">XChaCha20</span>
+            </div>
+            <div class="block-subtitle">Stream cipher · Nonce 24B · Extended</div>
+          </div>
+          <div class="block-body">
+            <div class="field">
+              <label>Plaintext</label>
+              <textarea id="xc20-plain" rows="3">Nonce extendido de 192 bits seguro 🔑</textarea>
+            </div>
+            <div class="field">
+              <label>Clave (hex 32B)</label>
+              <div style="display: flex; gap: 6px">
+                <input type="text" id="xc20-key" placeholder="64 chars hex..." />
+                <button class="btn-rand" onclick="fillRand('xc20-key', 32)" title="Generar">⚡</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>Nonce (hex 24B)</label>
+              <div style="display: flex; gap: 6px">
+                <input type="text" id="xc20-nonce" placeholder="48 chars hex..." />
+                <button class="btn-rand" onclick="fillRand('xc20-nonce', 24)" title="Generar">⚡</button>
+              </div>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-encrypt" id="xc20-enc" onclick="runXChaCha20Enc()">🔒 Cifrar</button>
+              <button class="btn btn-decrypt" id="xc20-dec" onclick="runXChaCha20Dec()">🔓 Descifrar</button>
+            </div>
+            <div class="result" id="xc20-ct">
+              <span class="result-label">CIPHERTEXT</span>
+              <span style="opacity: 0.4">— esperando —</span>
+            </div>
+            <div class="result" id="xc20-pt">
+              <span class="result-label">DECRYPTED</span>
+              <span style="opacity: 0.4">— esperando —</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Block 4: ChaCha20-Poly1305 AEAD ── -->
+        <div class="block c4" id="b-aead">
+          <div class="block-header">
+            <div class="block-title">
+              <div class="block-icon">🛡️</div>
+              <span class="block-name">ChaCha20-Poly1305</span>
+            </div>
+            <div class="block-subtitle">AEAD · RFC 8439 · Nonce 12B</div>
+          </div>
+          <div class="block-body">
+            <div class="field">
+              <label>Plaintext</label>
+              <textarea id="a-plain" rows="2">AEAD garantiza confidencialidad + autenticidad 🛡️</textarea>
+            </div>
+            <div class="field">
+              <label>AAD (datos adicionales, opcional)</label>
+              <input type="text" id="a-aad" value="metadata-header-v1" />
+            </div>
+            <div class="field">
+              <label>Clave (hex 32B)</label>
+              <div style="display: flex; gap: 6px">
+                <input type="text" id="a-key" placeholder="64 chars hex..." />
+                <button class="btn-rand" onclick="fillRand('a-key', 32)" title="Generar">⚡</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>Nonce (hex 12B)</label>
+              <div style="display: flex; gap: 6px">
+                <input type="text" id="a-nonce" placeholder="24 chars hex..." />
+                <button class="btn-rand" onclick="fillRand('a-nonce', 12)" title="Generar">⚡</button>
+              </div>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-encrypt" id="a-enc" onclick="runAeadEnc()">🔒 Seal</button>
+              <button class="btn btn-decrypt" id="a-dec" onclick="runAeadDec()">🔓 Open</button>
+            </div>
+            <div class="result" id="a-sealed">
+              <span class="result-label">SEALED (ct‖tag)</span>
+              <span style="opacity: 0.4">— esperando —</span>
+            </div>
+            <div class="result" id="a-opened">
+              <span class="result-label">OPENED</span>
+              <span style="opacity: 0.4">— esperando —</span>
+            </div>
+            <div id="a-tamper-test"></div>
+          </div>
+        </div>
+
+        <!-- ── Block 5: XChaCha20-Poly1305 AEAD ── -->
+        <div class="block c5" id="b-xaead">
+          <div class="block-header">
+            <div class="block-title">
+              <div class="block-icon">🔮</div>
+              <span class="block-name">XChaCha20-Poly1305</span>
+            </div>
+            <div class="block-subtitle">AEAD · Extended Nonce 24B</div>
+          </div>
+          <div class="block-body">
+            <div class="field">
+              <label>Plaintext</label>
+              <textarea id="xa-plain" rows="2">XChaCha20: nonce largo seguro para random 🔮</textarea>
+            </div>
+            <div class="field">
+              <label>AAD (opcional)</label>
+              <input type="text" id="xa-aad" value="xchacha20-header-v1" />
+            </div>
+            <div class="field">
+              <label>Clave (hex 32B)</label>
+              <div style="display: flex; gap: 6px">
+                <input type="text" id="xa-key" placeholder="64 chars hex..." />
+                <button class="btn-rand" onclick="fillRand('xa-key', 32)" title="Generar">⚡</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>Nonce (hex 24B)</label>
+              <div style="display: flex; gap: 6px">
+                <input type="text" id="xa-nonce" placeholder="48 chars hex..." />
+                <button class="btn-rand" onclick="fillRand('xa-nonce', 24)" title="Generar">⚡</button>
+              </div>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-encrypt" id="xa-enc" onclick="runXAeadEnc()">🔒 Seal</button>
+              <button class="btn btn-decrypt" id="xa-dec" onclick="runXAeadDec()">🔓 Open</button>
+            </div>
+            <div class="result" id="xa-sealed">
+              <span class="result-label">SEALED (ct‖tag)</span>
+              <span style="opacity: 0.4">— esperando —</span>
+            </div>
+            <div class="result" id="xa-opened">
+              <span class="result-label">OPENED</span>
+              <span style="opacity: 0.4">— esperando —</span>
+            </div>
+            <div id="xa-tamper-test"></div>
+          </div>
+        </div>
+      </div>
+      <!-- /grid -->
+    </div>
+    <!-- /app -->
+
+    <script type="module">
+      // ═══════════════════════════════════════════════════════════
+      // Cargar WASM desde NPM via esm.sh (CDN)
+      // ═══════════════════════════════════════════════════════════
+
+      import ChaChaPolyWasm from "https://esm.sh/aead-wasm@1.0.0"
+
+      let wasm = null
+
+      // ── Estado: guardar bytes en variables, NO parsear del DOM ─
+      const state = {
+        c20: { ct: null },
+        xc20: { ct: null },
+        aead: { sealed: null },
+        xaead: { sealed: null }
+      }
+
+      // ── Utils ──────────────────────────────────────────────────
+      window.toHex = (b) =>
+        Array.from(b)
+          .map((x) => x.toString(16).padStart(2, "0"))
+          .join("")
+      window.fromHex = (h) => {
+        const b = new Uint8Array(h.length / 2)
+        for (let i = 0; i < b.length; i++) b[i] = parseInt(h.slice(i * 2, i * 2 + 2), 16)
+        return b
+      }
+      window.fromUtf8 = (s) => new TextEncoder().encode(s)
+      window.toUtf8 = (b) => new TextDecoder().decode(b)
+      window.randomHex = (n) => {
+        const b = new Uint8Array(n)
+        crypto.getRandomValues(b)
+        return toHex(b)
+      }
+      window.fillRand = (id, n) => {
+        document.getElementById(id).value = randomHex(n)
+      }
+
+      function setResult(id, content, cls = "") {
+        const el = document.getElementById(id)
+        const label = el.querySelector(".result-label")?.outerHTML || ""
+        el.className = "result " + cls
+        el.innerHTML = label + content
+      }
+
+      function getKey(id, len = 32) {
+        const h = document.getElementById(id).value.trim()
+        const b = fromHex(h)
+        if (b.length !== len) throw new Error(`${id}: necesita ${len} bytes (${len * 2} chars hex)`)
+        return b
+      }
+      function getNonce(id, len) {
+        return getKey(id, len)
+      }
+
+      // ── Init ───────────────────────────────────────────────────
+      async function init() {
+        const dot = document.getElementById("status-dot")
+        const lbl = document.getElementById("status-label")
+        try {
+          wasm = await ChaChaPolyWasm.load()
+          dot.className = "status-dot ok"
+          lbl.textContent = "WASM listo ✓"
+          document.getElementById("loading").classList.add("hidden")
+          // Pre-rellenar con valores aleatorios
+          fillRand("p-key", 32)
+          fillRand("c20-key", 32)
+          fillRand("c20-nonce", 12)
+          fillRand("xc20-key", 32)
+          fillRand("xc20-nonce", 24)
+          fillRand("a-key", 32)
+          fillRand("a-nonce", 12)
+          fillRand("xa-key", 32)
+          fillRand("xa-nonce", 24)
+        } catch (e) {
+          dot.className = "status-dot err"
+          lbl.textContent = "Error al cargar WASM"
+          console.error(e)
+          document.getElementById("loading").innerHTML = `
+      <div style="color:#ef4444;font-size:13px;text-align:center;max-width:400px;line-height:1.6">
+        ❌ Error al cargar WASM:<br><span style="font-size:11px;opacity:.7">${e.message}</span>
+      </div>`
+        }
+      }
+
+      // ── Poly1305 ────────────────────────────────────────────────
+      window.runPoly = () => {
+        if (!wasm) return
+        try {
+          const msg = fromUtf8(document.getElementById("p-msg").value)
+          const key = getKey("p-key")
+          const tag = wasm.poly1305Mac(msg, key)
+          const tagHex = toHex(tag)
+          setResult("p-out", tagHex, "ok")
+          const tag2 = wasm.poly1305Mac(msg, key)
+          const det = toHex(tag2) === tagHex
+          document.getElementById("p-verify").innerHTML = `
+      <span class="verify-badge ${det ? "ok" : "err"}">${det ? "✅" : "❌"} Determinístico: ${det ? "IGUAL" : "DIFERENTE"}</span>
+      <span class="verify-badge ok">✅ 16 bytes = ${tag.length === 16}</span>`
+        } catch (e) {
+          setResult("p-out", "❌ " + e.message, "err")
+        }
+      }
+
+      // ── ChaCha20 ───────────────────────────────────────────────
+      window.runChaCha20Enc = () => {
+        if (!wasm) return
+        try {
+          const plain = fromUtf8(document.getElementById("c20-plain").value)
+          const key = getKey("c20-key", 32)
+          const nonce = getNonce("c20-nonce", 12)
+          const ct = wasm.chacha20Encrypt(key, nonce, plain)
+          state.c20.ct = ct
+          setResult("c20-ct", toHex(ct), "ok")
+          setResult("c20-pt", '<span style="opacity:.4">— usa 🔓 Descifrar —</span>', "")
+        } catch (e) {
+          setResult("c20-ct", "❌ " + e.message, "err")
+        }
+      }
+
+      window.runChaCha20Dec = () => {
+        if (!wasm) return
+        try {
+          if (!state.c20.ct) return setResult("c20-pt", "❌ Primero cifra algo", "err")
+          const key = getKey("c20-key", 32)
+          const nonce = getNonce("c20-nonce", 12)
+          const pt = wasm.chacha20Decrypt(key, nonce, state.c20.ct)
+          setResult("c20-pt", toUtf8(pt), "ok")
+        } catch (e) {
+          setResult("c20-pt", "❌ " + e.message, "err")
+        }
+      }
+
+      // ── XChaCha20 ──────────────────────────────────────────────
+      window.runXChaCha20Enc = () => {
+        if (!wasm) return
+        try {
+          const plain = fromUtf8(document.getElementById("xc20-plain").value)
+          const key = getKey("xc20-key", 32)
+          const nonce = getNonce("xc20-nonce", 24)
+          const ct = wasm.xchacha20Encrypt(key, nonce, plain)
+          state.xc20.ct = ct
+          setResult("xc20-ct", toHex(ct), "ok")
+          setResult("xc20-pt", '<span style="opacity:.4">— usa 🔓 Descifrar —</span>', "")
+        } catch (e) {
+          setResult("xc20-ct", "❌ " + e.message, "err")
+        }
+      }
+
+      window.runXChaCha20Dec = () => {
+        if (!wasm) return
+        try {
+          if (!state.xc20.ct) return setResult("xc20-pt", "❌ Primero cifra algo", "err")
+          const key = getKey("xc20-key", 32)
+          const nonce = getNonce("xc20-nonce", 24)
+          const pt = wasm.xchacha20Decrypt(key, nonce, state.xc20.ct)
+          setResult("xc20-pt", toUtf8(pt), "ok")
+        } catch (e) {
+          setResult("xc20-pt", "❌ " + e.message, "err")
+        }
+      }
+
+      // ── ChaCha20-Poly1305 AEAD ──────────────────────────────────
+      window.runAeadEnc = () => {
+        if (!wasm) return
+        try {
+          const plain = fromUtf8(document.getElementById("a-plain").value)
+          const aadTxt = document.getElementById("a-aad").value
+          const aad = aadTxt ? fromUtf8(aadTxt) : null
+          const key = getKey("a-key", 32)
+          const nonce = getNonce("a-nonce", 12)
+          const sealed = wasm.chacha20Poly1305Encrypt(key, nonce, plain, aad)
+          state.aead.sealed = sealed
+          const tagHex = toHex(sealed.slice(-16))
+          setResult(
+            "a-sealed",
+            `${toHex(sealed)}<br><span style="color:var(--yellow);font-size:9px;margin-top:4px;display:block">TAG: ${tagHex}</span>`,
+            "ok"
+          )
+          setResult("a-opened", '<span style="opacity:.4">— usa 🔓 Open —</span>', "")
+          document.getElementById("a-tamper-test").innerHTML = ""
+        } catch (e) {
+          setResult("a-sealed", "❌ " + e.message, "err")
+        }
+      }
+
+      window.runAeadDec = () => {
+        if (!wasm) return
+        try {
+          if (!state.aead.sealed) return setResult("a-opened", "❌ Primero sella algo", "err")
+          const aadTxt = document.getElementById("a-aad").value
+          const aad = aadTxt ? fromUtf8(aadTxt) : null
+          const key = getKey("a-key", 32)
+          const nonce = getNonce("a-nonce", 12)
+          const opened = wasm.chacha20Poly1305Decrypt(key, nonce, state.aead.sealed, aad)
+          if (opened === null) {
+            setResult("a-opened", "❌ Tag inválido — autenticación FALLIDA", "err")
+          } else {
+            setResult("a-opened", toUtf8(opened), "ok")
+            // Tampering test automático
+            const tampered = new Uint8Array(state.aead.sealed)
+            tampered[0] ^= 0xff
+            const badOpen = wasm.chacha20Poly1305Decrypt(key, nonce, tampered, aad)
+            document.getElementById("a-tamper-test").innerHTML = `
+        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+          <span class="verify-badge ok">✅ Auth OK</span>
+          <span class="verify-badge ${badOpen === null ? "ok" : "err"}">${badOpen === null ? "✅" : "❌"} Tamper detectado</span>
+        </div>`
+          }
+        } catch (e) {
+          setResult("a-opened", "❌ " + e.message, "err")
+        }
+      }
+
+      // ── XChaCha20-Poly1305 AEAD ─────────────────────────────────
+      window.runXAeadEnc = () => {
+        if (!wasm) return
+        try {
+          const plain = fromUtf8(document.getElementById("xa-plain").value)
+          const aadTxt = document.getElementById("xa-aad").value
+          const aad = aadTxt ? fromUtf8(aadTxt) : null
+          const key = getKey("xa-key", 32)
+          const nonce = getNonce("xa-nonce", 24)
+          const sealed = wasm.xchacha20Poly1305Encrypt(key, nonce, plain, aad)
+          state.xaead.sealed = sealed
+          const tagHex = toHex(sealed.slice(-16))
+          setResult(
+            "xa-sealed",
+            `${toHex(sealed)}<br><span style="color:var(--yellow);font-size:9px;margin-top:4px;display:block">TAG: ${tagHex}</span>`,
+            "ok"
+          )
+          setResult("xa-opened", '<span style="opacity:.4">— usa 🔓 Open —</span>', "")
+          document.getElementById("xa-tamper-test").innerHTML = ""
+        } catch (e) {
+          setResult("xa-sealed", "❌ " + e.message, "err")
+        }
+      }
+
+      window.runXAeadDec = () => {
+        if (!wasm) return
+        try {
+          if (!state.xaead.sealed) return setResult("xa-opened", "❌ Primero sella algo", "err")
+          const aadTxt = document.getElementById("xa-aad").value
+          const aad = aadTxt ? fromUtf8(aadTxt) : null
+          const key = getKey("xa-key", 32)
+          const nonce = getNonce("xa-nonce", 24)
+          const opened = wasm.xchacha20Poly1305Decrypt(key, nonce, state.xaead.sealed, aad)
+          if (opened === null) {
+            setResult("xa-opened", "❌ Tag inválido — autenticación FALLIDA", "err")
+          } else {
+            setResult("xa-opened", toUtf8(opened), "ok")
+            const tampered = new Uint8Array(state.xaead.sealed)
+            tampered[state.xaead.sealed.length - 1] ^= 0x01
+            const badOpen = wasm.xchacha20Poly1305Decrypt(key, nonce, tampered, aad)
+            document.getElementById("xa-tamper-test").innerHTML = `
+        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+          <span class="verify-badge ok">✅ Auth OK</span>
+          <span class="verify-badge ${badOpen === null ? "ok" : "err"}">${badOpen === null ? "✅" : "❌"} Tamper detectado</span>
+        </div>`
+          }
+        } catch (e) {
+          setResult("xa-opened", "❌ " + e.message, "err")
+        }
+      }
+
+      init()
+    </script>
+  </body>
+</html>

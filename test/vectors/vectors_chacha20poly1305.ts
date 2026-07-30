@@ -1,5 +1,4 @@
-// Auto-generated types for test vectors
-export class TestVector {
+export class ChaCha20Poly1305TestVector {
   key: string = ""
   nonce: string = ""
   aad: string = ""
@@ -13,7 +12,7 @@ export class TestVector {
   mac: string = ""
 }
 
-export const stablelib_chacha20poly1305_vectors: TestVector[] = [
+export const chacha20poly1305_vectors: ChaCha20Poly1305TestVector[] = [
   {
     key: "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f",
     nonce: "070000004041424344454647",

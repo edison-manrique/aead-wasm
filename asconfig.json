@@ -5,7 +5,9 @@
       "textFile": "build/debug.wat",
       "sourceMap": true,
       "debug": true,
-      "runtime": "minimal"
+      "initialMemory": 34,
+      "maximumMemory": 34,
+      "runtime": "stub"
     },
     "release": {
       "outFile": "dist/aead.wasm",
@@ -13,7 +15,9 @@
       "shrinkLevel": 2,
       "converge": true,
       "noAssert": true,
-      "runtime": "minimal"
+      "initialMemory": 34,
+      "maximumMemory": 34,
+      "runtime": "stub"
     }
   },
   "options": {}

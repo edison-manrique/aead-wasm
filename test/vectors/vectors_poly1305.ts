@@ -1,10 +1,10 @@
-export class TestVector {
+export class Poly1305TestVector {
   key: string = ""
   data: string = ""
   mac: string = ""
 }
 
-export const stablelib_poly1305_vectors: TestVector[] = [
+export const poly1305_vectors: Poly1305TestVector[] = [
   {
     key: "746869732069732033322d62797465206b657920666f7220506f6c7931333035",
     data: "48656c6c6f20776f726c6421",

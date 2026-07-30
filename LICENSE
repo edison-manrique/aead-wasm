@@ -204,7 +204,7 @@ limitations under the License.
 
 ## Disclaimer / Exención de Responsabilidad
 
-Este software se proporciona "tal cual" (AS IS), sin garantía de ningún tipo,
-expresa o implícita. El uso de esta biblioteca criptográfica es bajo su
-propio riesgo. El autor no se hace responsable de pérdidas de datos, fallos
-de autenticación o cualquier otro daño derivado del uso de este código.
+Este software se proporciona "tal cual" (AS IS), sin garantía de ningún tipo.
+Aunque ChaCha20-Poly1305, XChaCha20-Poly1305 y Poly1305 son estándares (RFC 8439),
+esta implementación no ha sido auditada formalmente y no debe emplearse en
+aplicaciones de seguridad crítica sin verificación independiente.

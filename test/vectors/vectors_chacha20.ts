@@ -1,11 +1,11 @@
 // Auto-generated types for test vectors
-export class TestVector {
+export class ChaCha20TestVector {
   key: string = ""
   nonce: string = ""
   stream: string = ""
 }
 
-export const stablelib_chacha20_vectors: TestVector[] = [
+export const chacha20_vectors: ChaCha20TestVector[] = [
   {
     key: "0000000000000000000000000000000000000000000000000000000000000000",
     nonce: "0000000000000000",

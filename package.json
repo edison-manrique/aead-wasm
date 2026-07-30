@@ -1,16 +1,19 @@
 {
   "name": "aead-wasm",
-  "version": "1.0.0",
-  "description": "ChaCha20-Poly1305 AEAD de alto rendimiento compilado en AssemblyScript/WASM con wrapper TypeScript zero-alloc.",
+  "version": "1.1.0",
+  "description": "AEAD ChaCha20-Poly1305 / XChaCha20-Poly1305 ultra-rápido en WebAssembly (AssemblyScript): ~1M ops/s, ~300 MB/s en streaming de archivos, zero-alloc (0% GC), verificación de tags constant-time y cifrado in-place. RFC 8439.",
   "author": "Edison Manrique",
   "license": "Apache-2.0",
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.js",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     }
   },
   "files": [
@@ -23,21 +26,46 @@
     "asbuild:debug": "asc assembly/index.ts --target debug",
     "build:ts": "esbuild src/index.ts --bundle --format=esm --minify --platform=browser --outfile=dist/index.js && tsc --emitDeclarationOnly",
     "build": "npm run asbuild && npm run build:ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "test:memory": "bun test test/memory.test.ts",
+    "bench": "bun test/bench.ts",
     "prepublishOnly": "npm run build",
     "examples": "bun examples/demo.js"
   },
   "keywords": [
     "wasm",
     "webassembly",
+    "assemblyscript",
+    "typescript",
     "cryptography",
+    "crypto",
+    "security",
+    "aead",
+    "authenticated-encryption",
+    "encryption",
+    "decryption",
+    "cipher",
+    "stream-cipher",
     "chacha20",
     "xchacha20",
-    "poly1305",
     "chacha20-poly1305",
     "xchacha20-poly1305",
-    "aead",
-    "assemblyscript",
-    "zero-alloc"
+    "poly1305",
+    "hchacha20",
+    "mac",
+    "message-authentication-code",
+    "rfc8439",
+    "rfc-8439",
+    "streaming",
+    "file-encryption",
+    "constant-time",
+    "zero-alloc",
+    "zero-gc",
+    "high-performance",
+    "isomorphic",
+    "cross-platform",
+    "symmetric"
   ],
   "repository": {
     "type": "git",

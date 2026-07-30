@@ -730,12 +730,18 @@
 
     <script type="module">
       // ═══════════════════════════════════════════════════════════
-      // Cargar WASM desde NPM via esm.sh (CDN)
+      // Cargar WASM desde NPM via esm.sh (CDN) — API v1.1.0 (named exports)
       // ═══════════════════════════════════════════════════════════
+      import {
+        AeadWasm,
+        Poly1305,
+        ChaCha20,
+        XChaCha20,
+        ChaCha20Poly1305,
+        XChaCha20Poly1305
+      } from "https://esm.sh/aead-wasm@latest"
 
-      import ChaChaPolyWasm from "https://esm.sh/aead-wasm@latest"
-
-      let wasm = null
+      let wasm = null // instancia AeadWasm (indica si está cargado)
 
       // ── Estado: guardar bytes en variables, NO parsear del DOM ─
       const state = {
@@ -788,7 +794,7 @@
         const dot = document.getElementById("status-dot")
         const lbl = document.getElementById("status-label")
         try {
-          wasm = await ChaChaPolyWasm.load()
+          wasm = await AeadWasm.load() // ← named export AeadWasm
           dot.className = "status-dot ok"
           lbl.textContent = "WASM listo ✓"
           document.getElementById("loading").classList.add("hidden")
@@ -807,9 +813,9 @@
           lbl.textContent = "Error al cargar WASM"
           console.error(e)
           document.getElementById("loading").innerHTML = `
-      <div style="color:#ef4444;font-size:13px;text-align:center;max-width:400px;line-height:1.6">
-        ❌ Error al cargar WASM:<br><span style="font-size:11px;opacity:.7">${e.message}</span>
-      </div>`
+  <div style="color:#ef4444;font-size:13px;text-align:center;max-width:400px;line-height:1.6">
+    ❌ Error al cargar WASM:<br><span style="font-size:11px;opacity:.7">${e.message}</span>
+  </div>`
         }
       }
 
@@ -819,14 +825,14 @@
         try {
           const msg = fromUtf8(document.getElementById("p-msg").value)
           const key = getKey("p-key")
-          const tag = wasm.poly1305Mac(msg, key)
+          const tag = Poly1305.mac(key, msg) // ← orden (key, msg)
           const tagHex = toHex(tag)
           setResult("p-out", tagHex, "ok")
-          const tag2 = wasm.poly1305Mac(msg, key)
+          const tag2 = Poly1305.mac(key, msg)
           const det = toHex(tag2) === tagHex
           document.getElementById("p-verify").innerHTML = `
-      <span class="verify-badge ${det ? "ok" : "err"}">${det ? "✅" : "❌"} Determinístico: ${det ? "IGUAL" : "DIFERENTE"}</span>
-      <span class="verify-badge ok">✅ 16 bytes = ${tag.length === 16}</span>`
+  <span class="verify-badge ${det ? "ok" : "err"}">${det ? "✅" : "❌"} Determinístico: ${det ? "IGUAL" : "DIFERENTE"}</span>
+  <span class="verify-badge ok">✅ 16 bytes = ${tag.length === 16}</span>`
         } catch (e) {
           setResult("p-out", "❌ " + e.message, "err")
         }
@@ -839,7 +845,7 @@
           const plain = fromUtf8(document.getElementById("c20-plain").value)
           const key = getKey("c20-key", 32)
           const nonce = getNonce("c20-nonce", 12)
-          const ct = wasm.chacha20Encrypt(key, nonce, plain)
+          const ct = ChaCha20.encrypt(key, nonce, plain) // ← método estático
           state.c20.ct = ct
           setResult("c20-ct", toHex(ct), "ok")
           setResult("c20-pt", '<span style="opacity:.4">— usa 🔓 Descifrar —</span>', "")
@@ -854,7 +860,7 @@
           if (!state.c20.ct) return setResult("c20-pt", "❌ Primero cifra algo", "err")
           const key = getKey("c20-key", 32)
           const nonce = getNonce("c20-nonce", 12)
-          const pt = wasm.chacha20Decrypt(key, nonce, state.c20.ct)
+          const pt = ChaCha20.decrypt(key, nonce, state.c20.ct)
           setResult("c20-pt", toUtf8(pt), "ok")
         } catch (e) {
           setResult("c20-pt", "❌ " + e.message, "err")
@@ -868,7 +874,7 @@
           const plain = fromUtf8(document.getElementById("xc20-plain").value)
           const key = getKey("xc20-key", 32)
           const nonce = getNonce("xc20-nonce", 24)
-          const ct = wasm.xchacha20Encrypt(key, nonce, plain)
+          const ct = XChaCha20.encrypt(key, nonce, plain) // ← método estático
           state.xc20.ct = ct
           setResult("xc20-ct", toHex(ct), "ok")
           setResult("xc20-pt", '<span style="opacity:.4">— usa 🔓 Descifrar —</span>', "")
@@ -883,7 +889,7 @@
           if (!state.xc20.ct) return setResult("xc20-pt", "❌ Primero cifra algo", "err")
           const key = getKey("xc20-key", 32)
           const nonce = getNonce("xc20-nonce", 24)
-          const pt = wasm.xchacha20Decrypt(key, nonce, state.xc20.ct)
+          const pt = XChaCha20.decrypt(key, nonce, state.xc20.ct)
           setResult("xc20-pt", toUtf8(pt), "ok")
         } catch (e) {
           setResult("xc20-pt", "❌ " + e.message, "err")
@@ -899,7 +905,7 @@
           const aad = aadTxt ? fromUtf8(aadTxt) : null
           const key = getKey("a-key", 32)
           const nonce = getNonce("a-nonce", 12)
-          const sealed = wasm.chacha20Poly1305Encrypt(key, nonce, plain, aad)
+          const sealed = ChaCha20Poly1305.encrypt(key, nonce, plain, aad) // ← método estático
           state.aead.sealed = sealed
           const tagHex = toHex(sealed.slice(-16))
           setResult(
@@ -922,7 +928,7 @@
           const aad = aadTxt ? fromUtf8(aadTxt) : null
           const key = getKey("a-key", 32)
           const nonce = getNonce("a-nonce", 12)
-          const opened = wasm.chacha20Poly1305Decrypt(key, nonce, state.aead.sealed, aad)
+          const opened = ChaCha20Poly1305.decrypt(key, nonce, state.aead.sealed, aad)
           if (opened === null) {
             setResult("a-opened", "❌ Tag inválido — autenticación FALLIDA", "err")
           } else {
@@ -930,12 +936,12 @@
             // Tampering test automático
             const tampered = new Uint8Array(state.aead.sealed)
             tampered[0] ^= 0xff
-            const badOpen = wasm.chacha20Poly1305Decrypt(key, nonce, tampered, aad)
+            const badOpen = ChaCha20Poly1305.decrypt(key, nonce, tampered, aad)
             document.getElementById("a-tamper-test").innerHTML = `
-        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
-          <span class="verify-badge ok">✅ Auth OK</span>
-          <span class="verify-badge ${badOpen === null ? "ok" : "err"}">${badOpen === null ? "✅" : "❌"} Tamper detectado</span>
-        </div>`
+    <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+      <span class="verify-badge ok">✅ Auth OK</span>
+      <span class="verify-badge ${badOpen === null ? "ok" : "err"}">${badOpen === null ? "✅" : "❌"} Tamper detectado</span>
+    </div>`
           }
         } catch (e) {
           setResult("a-opened", "❌ " + e.message, "err")
@@ -951,7 +957,7 @@
           const aad = aadTxt ? fromUtf8(aadTxt) : null
           const key = getKey("xa-key", 32)
           const nonce = getNonce("xa-nonce", 24)
-          const sealed = wasm.xchacha20Poly1305Encrypt(key, nonce, plain, aad)
+          const sealed = XChaCha20Poly1305.encrypt(key, nonce, plain, aad) // ← método estático
           state.xaead.sealed = sealed
           const tagHex = toHex(sealed.slice(-16))
           setResult(
@@ -974,19 +980,19 @@
           const aad = aadTxt ? fromUtf8(aadTxt) : null
           const key = getKey("xa-key", 32)
           const nonce = getNonce("xa-nonce", 24)
-          const opened = wasm.xchacha20Poly1305Decrypt(key, nonce, state.xaead.sealed, aad)
+          const opened = XChaCha20Poly1305.decrypt(key, nonce, state.xaead.sealed, aad)
           if (opened === null) {
             setResult("xa-opened", "❌ Tag inválido — autenticación FALLIDA", "err")
           } else {
             setResult("xa-opened", toUtf8(opened), "ok")
             const tampered = new Uint8Array(state.xaead.sealed)
             tampered[state.xaead.sealed.length - 1] ^= 0x01
-            const badOpen = wasm.xchacha20Poly1305Decrypt(key, nonce, tampered, aad)
+            const badOpen = XChaCha20Poly1305.decrypt(key, nonce, tampered, aad)
             document.getElementById("xa-tamper-test").innerHTML = `
-        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
-          <span class="verify-badge ok">✅ Auth OK</span>
-          <span class="verify-badge ${badOpen === null ? "ok" : "err"}">${badOpen === null ? "✅" : "❌"} Tamper detectado</span>
-        </div>`
+    <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+      <span class="verify-badge ok">✅ Auth OK</span>
+      <span class="verify-badge ${badOpen === null ? "ok" : "err"}">${badOpen === null ? "✅" : "❌"} Tamper detectado</span>
+    </div>`
           }
         } catch (e) {
           setResult("xa-opened", "❌ " + e.message, "err")

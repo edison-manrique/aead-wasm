@@ -44,6 +44,12 @@ function aeadWasmPlugin(): Plugin {
           })
         }
       }
+    },
+    closeBundle() {
+      const privateAssetsOut = path.resolve(process.cwd(), "dist-app", "assets", "aistudio")
+      if (fs.existsSync(privateAssetsOut)) {
+        fs.rmSync(privateAssetsOut, { recursive: true, force: true })
+      }
     }
   }
 }

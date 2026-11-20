@@ -9,10 +9,10 @@ Soporta **ChaCha20-Poly1305** y **XChaCha20-Poly1305** (RFC 8439), los cifradore
 ## 🚀 Características Principales
 
 - ⚡ **Doble Compilación (ST & MT)**:
-  - **Single-Thread (`dist/aead.wasm`, 8.1 KB)**: cero instrucciones atómicas, ideal para uso secuencial y entornos sin `SharedArrayBuffer`.
-  - **Multithread (`dist/aead.mt.wasm`, 9.1 KB)**: compilado con `--enable threads --sharedMemory --importMemory --zeroFilledMemory` para compartir memoria lineal (`SharedArrayBuffer`) entre Web Workers o `node:worker_threads`.
-- 🔒 **Lock de Memoria en `Arena` (`assembly/arena.ts`)**:
-  - Protege `PARAM_IN`, `PARAM_OUT` y el bump-pointer compartido frente a sobreescrituras mientras hay una operación en curso (`arena_lock` / `arena_try_lock` / `arena_unlock`).
+  - **Single-Thread (`dist/aead.wasm`, 8.3 KB)**: cero instrucciones atómicas, ideal para uso secuencial y entornos sin `SharedArrayBuffer`.
+  - **Multithread (`dist/aead.mt.wasm`, 8.7 KB)**: compilado con `--enable threads --sharedMemory --importMemory --zeroFilledMemory` sobre `SharedArrayBuffer` (264 págs ≈ 16.5 MB) con **8 slots paralelos** (`PARAM_IN`/`PARAM_OUT` + Arena dedicados por slot) para escalado multi-core real entre Web Workers o `node:worker_threads`.
+- 🔒 **Pool Multi-Slot + Lock en `Arena` (`assembly/arena.ts`)**:
+  - Cada slot posee sus propias regiones `PARAM_IN[s]` / `PARAM_OUT[s]` y segmento de Arena (16 KB/slot). Un `Atomics.compareExchange` adquiere el slot una sola vez y el hot-path interno de `Arena` corre con **cero atómicos**.
 - 🧹 **Zero-Alloc (Cero Alocaciones GC)**: Alocador estático `Arena` (`memory.data` + `save/restore`) y contextos como _struct sobre puntero_ (`changetype`, sin `new` en el heap) — **`WASM Δ 0 B`** bajo carga sostenida.
 - 🌐 **Multiplataforma**: Funciona en Node.js, Bun, Deno y Navegadores Web (Vite, Webpack, GitHub Pages).
 - 🛡️ **Seguridad Crypto**:
@@ -68,9 +68,9 @@ const mtWasm = await AeadWasm.loadThreaded("/aead.mt.wasm")
 // import { readFileSync } from "node:fs"
 // const mtWasm = await AeadWasm.fromBuffer(readFileSync("node_modules/aead-wasm/dist/aead.mt.wasm"))
 
-// Comparte módulo + SharedArrayBuffer con Web Workers o node:worker_threads:
+// Comparte módulo + SharedArrayBuffer (264 págs, 8 slots paralelos) con Workers:
 const wasmModule = mtWasm.getModule()!
-const sharedMemory = mtWasm.getMemory() // WebAssembly.Memory({ initial: 34, maximum: 34, shared: true })
+const sharedMemory = mtWasm.getMemory() // WebAssembly.Memory({ initial: 264, maximum: 264, shared: true })
 ```
 
 #### Ejemplo en Worker (`Web Worker` o `node:worker_threads`)
@@ -204,11 +204,12 @@ Todas las llamadas públicas adquieren y liberan el lock automáticamente (`with
 const wasm = AeadWasm.getInstance()
 
 console.log(wasm.getArenaStats())
-// → { used: 0, capacity: 65536, locked: false, threaded: true | false }
+// → { used: 0, capacity: 16384 | 65536, locked: false, threaded: true | false, slots: 8 | 1 }
 
+// Lock manual del Slot 0 (o lockSlot(s) / unlockSlot(s) en modo multi-slot MT):
 if (wasm.tryLock()) {
   try {
-    // Ninguna otra operación ni worker puede sobreescribir PARAM_IN / PARAM_OUT
+    // Ninguna otra operación ni worker puede sobreescribir PARAM_IN[0] / PARAM_OUT[0]
     const alloc = wasm.getAllocator()
     alloc.writeInput(new Uint8Array([1, 2, 3, 4]), 0)
   } finally {
@@ -260,62 +261,62 @@ const joined = concatBytes(a, b, c)
 ## 📊 Benchmarks de Rendimiento (Single-Thread vs Multithread)
 
 Resultados ejecutados con `npm run bench` en **Node v22.23.2** (V8) sobre **linux x64 (4 vCPUs)** comparando ambos binarios:
-- **Single-Thread (`dist/aead.wasm`)**: `8.1 KB`
-- **Multithread (`dist/aead.mt.wasm`)**: `9.1 KB` (con `SharedArrayBuffer` y locks atómicos en `Arena`)
+- **Single-Thread (`dist/aead.wasm`)**: `8.3 KB` (1 slot, 34 págs)
+- **Multithread (`dist/aead.mt.wasm`)**: `8.7 KB` (8 slots paralelos sin contención en `SharedArrayBuffer`, 264 págs)
 
 **One-shot — ops/s por tamaño de mensaje (ST vs MT):**
 
 | Operación                    | 64 B (ST) | 64 B (MT) | 1 KB (ST) | 1 KB (MT) | 16 KB (ST) | 16 KB (MT) | 256 KB (ST) | 256 KB (MT) |
 | ---------------------------- | --------: | --------: | --------: | --------: | ---------: | ---------: | ----------: | ----------: |
-| Poly1305 (mac)               | 1,949,354 | 1,561,810 |   704,315 |   646,308 |     68,220 |     63,092 |       4,303 |       4,470 |
-| ChaCha20 (encrypt)           | 1,353,523 | 1,140,193 |   205,754 |   181,067 |     16,668 |     16,385 |         911 |         999 |
-| XChaCha20 (encrypt)          | 1,138,145 | 1,007,106 |   197,295 |   189,539 |     17,156 |     18,390 |       1,250 |         789 |
-| ChaCha20-Poly1305 (encrypt)  |   470,640 |   450,859 |   149,567 |   150,011 |     15,976 |     12,751 |         849 |       1,038 |
-| ChaCha20-Poly1305 (decrypt)  |   827,779 |   672,766 |   166,641 |   148,995 |     14,731 |     12,452 |         859 |       1,028 |
-| XChaCha20-Poly1305 (encrypt) |   463,389 |   417,718 |   148,121 |   132,132 |     16,721 |     14,489 |         753 |         880 |
-| XChaCha20-Poly1305 (decrypt) |   697,442 |   578,530 |   157,285 |   134,821 |     15,008 |     13,661 |         919 |         871 |
+| Poly1305 (mac)               | 1,928,135 | 1,640,805 |   717,544 |   646,885 |     70,474 |     64,640 |       4,613 |       4,288 |
+| ChaCha20 (encrypt)           | 1,406,421 | 1,159,076 |   198,959 |   179,288 |     16,469 |     18,867 |         916 |       1,088 |
+| XChaCha20 (encrypt)          | 1,190,573 | 1,028,661 |   201,981 |   187,932 |     20,752 |     19,883 |       1,318 |       1,190 |
+| ChaCha20-Poly1305 (encrypt)  |   491,601 |   452,827 |   156,701 |   149,709 |     15,031 |     15,885 |         997 |         936 |
+| ChaCha20-Poly1305 (decrypt)  |   842,222 |   686,439 |   164,117 |   152,879 |     14,859 |     15,215 |         926 |       1,010 |
+| XChaCha20-Poly1305 (encrypt) |   470,144 |   454,928 |   152,009 |   141,870 |     14,138 |     13,882 |       1,007 |         913 |
+| XChaCha20-Poly1305 (decrypt) |   749,348 |   619,591 |   152,103 |   135,327 |     12,855 |     14,179 |         929 |         917 |
 
 **One-shot — throughput (MB/s) por tamaño de mensaje (ST vs MT):**
 
 | Operación                    | 64 B (ST / MT) | 1 KB (ST / MT) | 16 KB (ST / MT) | 256 KB (ST / MT) |
 | ---------------------------- | -------------: | -------------: | --------------: | ---------------: |
-| Poly1305 (mac)               |  124.8 / 100.0 |  721.2 / 661.8 | 1117.7 / 1033.7 |  1127.9 / 1171.7 |
-| ChaCha20 (encrypt)           |    86.6 / 73.0 |  210.7 / 185.4 |   273.1 / 268.4 |    238.9 / 261.8 |
-| XChaCha20 (encrypt)          |    72.8 / 64.5 |  202.0 / 194.1 |   281.1 / 301.3 |    327.7 / 206.8 |
-| ChaCha20-Poly1305 (encrypt)  |    30.1 / 28.9 |  153.2 / 153.6 |   261.7 / 208.9 |    222.5 / 272.2 |
-| ChaCha20-Poly1305 (decrypt)  |    53.0 / 43.1 |  170.6 / 152.6 |   241.4 / 204.0 |    225.3 / 269.5 |
-| XChaCha20-Poly1305 (encrypt) |    29.7 / 26.7 |  151.7 / 135.3 |   274.0 / 237.4 |    197.3 / 230.8 |
-| XChaCha20-Poly1305 (decrypt) |    44.6 / 37.0 |  161.1 / 138.1 |   245.9 / 223.8 |    241.0 / 228.4 |
+| Poly1305 (mac)               |  123.4 / 105.0 |  734.8 / 662.4 | 1154.6 / 1059.1 |  1209.3 / 1124.1 |
+| ChaCha20 (encrypt)           |    90.0 / 74.2 |  203.7 / 183.6 |   269.8 / 309.1 |    240.2 / 285.2 |
+| XChaCha20 (encrypt)          |    76.2 / 65.8 |  206.8 / 192.4 |   340.0 / 325.8 |    345.4 / 311.8 |
+| ChaCha20-Poly1305 (encrypt)  |    31.5 / 29.0 |  160.5 / 153.3 |   246.3 / 260.3 |    261.5 / 245.3 |
+| ChaCha20-Poly1305 (decrypt)  |    53.9 / 43.9 |  168.1 / 156.5 |   243.4 / 249.3 |    242.7 / 264.7 |
+| XChaCha20-Poly1305 (encrypt) |    30.1 / 29.1 |  155.7 / 145.3 |   231.6 / 227.4 |    264.0 / 239.4 |
+| XChaCha20-Poly1305 (decrypt) |    48.0 / 39.7 |  155.8 / 138.6 |   210.6 / 232.3 |    243.6 / 240.5 |
 
 **Streaming de archivos — AEAD encrypt (MB/s, 1 MB y 4 MB):**
 
 | Operación          | 1 MB (ST / MT) | 4 MB (ST / MT) |
 | ------------------ | -------------: | -------------: |
-| ChaCha20-Poly1305  |  201.1 / 202.4 |  213.8 / 197.0 |
-| XChaCha20-Poly1305 |  198.5 / 164.3 |  220.9 / 166.5 |
+| ChaCha20-Poly1305  |  181.4 / 196.6 |  234.6 / 184.3 |
+| XChaCha20-Poly1305 |  245.7 / 212.9 |  226.9 / 204.0 |
 
 **Concurrencia MT — 4 Worker Threads compartiendo `SharedArrayBuffer` (payload 16 KB):**
 
-| Primitiva                    | ops/s agregadas | MB/s agregados |
-| ---------------------------- | --------------: | -------------: |
-| Poly1305 (mac)               |          40,681 |          666.5 |
-| ChaCha20 (encrypt)           |           7,632 |          125.0 |
-| XChaCha20 (encrypt)          |          12,694 |          208.0 |
-| ChaCha20-Poly1305 (encrypt)  |          10,882 |          178.3 |
-| ChaCha20-Poly1305 (decrypt)  |           9,988 |          163.6 |
-| XChaCha20-Poly1305 (encrypt) |           9,855 |          161.5 |
-| XChaCha20-Poly1305 (decrypt) |           9,988 |          163.6 |
+| Primitiva                    | ops/s agregadas | MB/s agregados | Escalado vs ST (1 hilo) |
+| ---------------------------- | --------------: | -------------: | ----------------------: |
+| Poly1305 (mac)               |         190,953 |     **3,128.6** |                 **2.71x** |
+| ChaCha20 (encrypt)           |          35,114 |          575.3 |                 **2.13x** |
+| XChaCha20 (encrypt)          |          52,948 |          867.5 |                 **2.55x** |
+| ChaCha20-Poly1305 (encrypt)  |          40,189 |      **658.5** |                 **2.67x** |
+| ChaCha20-Poly1305 (decrypt)  |          38,763 |          635.1 |                 **2.61x** |
+| XChaCha20-Poly1305 (encrypt) |          35,483 |          581.4 |                 **2.51x** |
+| XChaCha20-Poly1305 (decrypt) |          37,097 |          607.8 |                 **2.89x** |
 
 **Comparativa vs `node:crypto` (`chacha20-poly1305` nativo, Single-Thread):**
 
 | Tamaño | `aead-wasm` ops/s | `node:crypto` ops/s | Speedup |
 | ------ | ----------------: | ------------------: | ------: |
-| 64 B   |           469,633 |             169,190 | **2.78x** |
-| 1 KB   |           151,418 |             106,678 | **1.42x** |
-| 16 KB  |            13,325 |              21,570 |   0.62x |
-| 256 KB |               715 |               1,402 |   0.51x |
+| 64 B   |           527,583 |             166,420 | **3.17x** |
+| 1 KB   |           159,022 |             102,003 | **1.56x** |
+| 16 KB  |            16,354 |              48,632 |   0.34x |
+| 256 KB |             1,046 |               2,527 |   0.41x |
 
-> En mensajes pequeños (64 B – 1 KB), `aead-wasm` supera a `node:crypto` hasta **2.78x** gracias al modelo zero-alloc en `Arena` (frente al coste de instanciar objetos OpenSSL por llamada). En modo MT con `SharedArrayBuffer`, múltiples workers comparten los 2.1 MB de memoria lineal con serialización atómica segura sobre `PARAM_IN`/`PARAM_OUT`; para máximo paralelismo CPU independiente por hilo, cada worker puede instanciar `aead.wasm` (ST).
+> En mensajes pequeños (64 B – 1 KB), `aead-wasm` supera a `node:crypto` hasta **3.17x** gracias al modelo zero-alloc en `Arena`. En modo Multithread, el pool de **8 slots independientes** elimina la contención entre workers y permite escalar de **2.13x a 2.89x** sobre Single-Thread con 4 Worker Threads compartiendo la misma `SharedArrayBuffer` (**3,128.6 MB/s** en Poly1305 y **658.5 MB/s** en ChaCha20-Poly1305).
 
 **Validación ST + MT + Lock (`npm test`):**
 
@@ -324,17 +325,17 @@ Resultados ejecutados con `npm run bench` en **Node v22.23.2** (V8) sobre **linu
 | Poly1305 — RFC 8439 §A.3             | 25 vectores oficiales en ST y MT                                                    |
 | ChaCha20 / XChaCha20                 | vectores RFC / NaCl + round-trip en ST y MT                                         |
 | ChaCha20-Poly1305 / XChaCha20-Poly1305 | vectores RFC 8439 §A.5 + tamper + streaming > 1 MB en ST y MT                     |
-| Lock ST & MT (`Arena`)               | bloqueo sin sobreescritura en ST, contención atómica y 4 workers concurrentes en MT |
+| Lock ST & MT (`Arena`)               | bloqueo sin sobreescritura en ST, aislamiento de 8 slots, contención atómica y 4 workers concurrentes en MT |
 
 ---
 
 ## 🏗️ Arquitectura Zero-Allocation & Arena
 
-- **Clase estática `Arena` (`assembly/arena.ts`)**: 64 KB de trabajo + 1 MB de entrada (`PARAM_IN`) + 1 MB de salida (`PARAM_OUT`) reservados en tiempo de compilación (`memory.data`), con `Arena.save()` / `Arena.restore()` por operación.
-- **Separación de locks (cero self-deadlock)**:
-  - `IO_LOCK_PTR` (`arena_lock` / `arena_try_lock` / `arena_unlock`): protege `PARAM_IN` y `PARAM_OUT` en el puente JS↔WASM.
-  - `ARENA_LOCK_PTR` (spinlock interno en MT): sincroniza el bump-pointer compartido (`ARENA_OFF_PTR`) dentro de `Arena.alloc/save/restore`.
-- **Compilación condicional (`ASC_FEATURE_THREADS`)**: en `aead.wasm` (ST) el compilador elimina las operaciones atómicas y usa un global WASM; en `aead.mt.wasm` (MT) usa `atomic.cmpxchg`/`load`/`store` junto con `--zeroFilledMemory` para que los workers secundarios no reinicien la memoria compartida al instanciar.
+- **Clase estática `Arena` (`assembly/arena.ts`)**:
+  - **ST (`aead.wasm`, 34 págs)**: 64 KB de arena + 1 MB `PARAM_IN` + 1 MB `PARAM_OUT` reservados en compilación (`memory.data`), con cero instrucciones atómicas.
+  - **MT (`aead.mt.wasm`, 264 págs)**: **8 slots paralelos** (`PARAM_IN[s]`, `PARAM_OUT[s]` y 16 KB de arena/slot). Cada instancia de worker mantiene `Arena.activeSlot` y `Arena.current` en globales thread-local WASM, por lo que `Arena.save()/alloc()/restore()` operan con **cero atómicos** dentro del hot-path.
+- **Sincronización sin contención**: cada hilo adquiere su `preferredSlot` mediante un único `Atomics.compareExchange` en JS sobre `CTRL_BASE[slot]` (0 llamadas extra a WASM en one-shot) y solo hace spin-wait si los 8 slots están ocupados simultáneamente.
+- **Compilación condicional (`ASC_FEATURE_THREADS`)**: en `aead.mt.wasm` se compila con `--zeroFilledMemory` para que los workers secundarios nunca sobreescriban la memoria compartida al instanciar.
 - **Contextos como _struct sobre puntero_**: ChaCha20, XChaCha20, Poly1305 y AEAD operan vía `changetype` (sin `new`).
 - **Verificación constant-time y wipe**: `secureEqual16` sin _early-exit_ y `wipe()` tras cada operación.
 

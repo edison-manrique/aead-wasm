@@ -211,11 +211,19 @@ if (!isMainThread) {
   const wasmModule = mtWasm.getModule()!
   const sharedMemory = mtWasm.getMemory()
 
-  // ── 3. Verify Lock contention across Worker Thread ────────────────────────
-  console.log("3) Verificando Lock atómico en Worker Thread compartiendo SharedArrayBuffer...")
-  mtWasm.lock()
+  // ── 3. Verify Multi-Slot isolation + Full-Pool Lock contention across Worker ──
+  console.log("3) Verificando aislamiento Multi-Slot y Lock atómico en Worker Thread...")
+  assert.equal(mtWasm.getSlotCount(), 8, "MT debe exponer 8 slots paralelos")
+
+  // 3a. Lock Slot 0 + write sentinel: Worker encrypting concurrently picks Slot 1 and leaves Slot 0 intact
+  mtWasm.lockSlot(0)
   const mtSentinel = new Uint8Array([0xaa, 0xbb, 0xcc, 0xdd, 0x11, 0x22, 0x33, 0x44])
   mtWasm.getAllocator().writeInput(mtSentinel, 0)
+
+  // Lock remaining slots 1..7 so Worker must wait until unlocked
+  for (let s = 1; s < mtWasm.getSlotCount(); s++) {
+    mtWasm.lockSlot(s)
+  }
 
   await new Promise<void>((resolve, reject) => {
     const worker = new Worker(fileURLToPath(import.meta.url), {
@@ -230,21 +238,28 @@ if (!isMainThread) {
     worker.on("error", reject)
     worker.on("message", async (msg: { phase: string; sawBusy?: boolean; ok?: boolean }) => {
       if (msg.phase === "ready") {
-        assert.equal(msg.sawBusy, true, "El worker debe detectar que el lock está ocupado")
-        // Give the worker time to enter spin-wait on arena_lock()
+        assert.equal(msg.sawBusy, true, "El worker debe detectar que el lock del Slot 0 está ocupado")
+        // Give the worker time to enter spin-wait because all 8 slots are locked
         await new Promise((r) => setTimeout(r, 40))
-        // Sentinel in PARAM_IN must STILL be intact while main holds lock!
-        const readBack = mtWasm.getAllocator().readBytes(mtWasm.getAllocator().inPtr, mtSentinel.length)
-        assert.equal(bytesToHex(readBack), bytesToHex(mtSentinel), "Worker sobrescribió PARAM_IN mientras estaba bloqueado!")
-        mtWasm.unlock()
+        // Sentinel in Slot 0 PARAM_IN must STILL be intact!
+        const readBackBefore = mtWasm.getAllocator().readBytes(mtWasm.getAllocator().inPtr, mtSentinel.length)
+        assert.equal(bytesToHex(readBackBefore), bytesToHex(mtSentinel), "Worker sobrescribió PARAM_IN mientras todos los slots estaban bloqueados!")
+        // Unlock ONLY slots 1..7 while keeping Slot 0 locked -> Worker runs on another slot without touching Slot 0
+        for (let s = 1; s < mtWasm.getSlotCount(); s++) {
+          mtWasm.unlockSlot(s)
+        }
       } else if (msg.phase === "done") {
         assert.equal(msg.ok, true)
+        // Slot 0 sentinel must STILL be intact even AFTER worker encrypted on Slot 1!
+        const readBackAfter = mtWasm.getAllocator().readBytes(mtWasm.getAllocator().inPtr, mtSentinel.length)
+        assert.equal(bytesToHex(readBackAfter), bytesToHex(mtSentinel), "Worker tocó Slot 0 aunque operó en otro slot!")
+        mtWasm.unlockSlot(0)
         await worker.terminate()
         resolve()
       }
     })
   })
-  console.log("   ✓ Lock atómico impidió sobreescritura y el worker completó al liberar")
+  console.log("   ✓ Lock atómico + aislamiento Multi-Slot (8 slots) verificados")
 
   // ── 4. Verify 4 concurrent workers hammering shared WASM memory ───────────
   console.log("4) Verificando 4 workers concurrentes sobre la misma SharedArrayBuffer...")

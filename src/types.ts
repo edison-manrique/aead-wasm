@@ -82,7 +82,7 @@ export interface AsmExports {
   // ── Liberación de un stream sin finalizar (opcional; ver nota abajo) ──
   aead_free_ptr?: (ctxPtr: number) => void
 
-  // ── Control de Arena & Lock de memoria ──
+  // ── Control de Arena, Slots & Lock de memoria ──
   arena_lock?: () => void
   arena_try_lock?: () => number
   arena_unlock?: () => void
@@ -91,6 +91,15 @@ export interface AsmExports {
   arena_capacity?: () => number
   arena_is_threaded?: () => number
   arena_reset?: () => void
+  arena_ctrl_ptr?: () => number
+  arena_worker_hint_ptr?: () => number
+  arena_off_ptr?: () => number
+  arena_slot_count?: () => number
+  arena_slot_in_ptr?: (slot: number) => number
+  arena_slot_out_ptr?: (slot: number) => number
+  arena_use_slot?: (slot: number) => void
+  arena_sync_slot?: () => void
+  arena_slot_for_ptr?: (ptr: number) => number
 }
 
 // ── Constantes criptográficas ───────────────────────────────────────────────
@@ -110,6 +119,7 @@ export interface ArenaStats {
   capacity: number
   locked: boolean
   threaded: boolean
+  slots?: number
 }
 
 /** Resultado "detached": ciphertext y tag por separado. */

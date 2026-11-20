@@ -113,7 +113,7 @@ export function SecurityPage(props: SecurityPageProps) {
               <strong>Single-Thread (aead.wasm):</strong> <code>tryLock()</code> detecta colisión de I/O y lanza error inmediato antes de tocar <code>PARAM_IN</code>.
             </li>
             <li>
-              <strong>Multithread (aead.mt.wasm):</strong> <code>arena_lock()</code> espera mediante spinlock atómico (<code>atomic.cmpxchg</code>) separado del spinlock interno del bump-pointer (sin self-deadlock).
+              <strong>Multithread (aead.mt.wasm):</strong> pool de 8 slots aislados (<code>PARAM_IN[s]</code> / <code>PARAM_OUT[s]</code> + Arena propia) protegidos por <code>Atomics.compareExchange</code> sin contención ni sobreescrituras cruzadas.
             </li>
           </ul>
         </section>

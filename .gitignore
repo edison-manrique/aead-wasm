@@ -17,5 +17,8 @@ Thumbs.db
 
 # AI Studio & build de playground
 .aistudio/
+public/assets/aistudio/
+assets/aistudio/
 dist-app/
+
 

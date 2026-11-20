@@ -73,7 +73,7 @@ function CodeBlock(props: CodeBlockProps) {
 
 const INIT_ST_SNIPPET = `import { AeadWasm } from "aead-wasm"
 
-// ── Single-Thread (dist/aead.wasm, 8.1 KB) ──
+// ── Single-Thread (dist/aead.wasm, 8.3 KB) ──
 // Navegador / bundler (carga única del singleton)
 await AeadWasm.load()
 
@@ -84,16 +84,16 @@ await AeadWasm.fromBuffer(stBuf)`
 
 const INIT_MT_SNIPPET = `import { AeadWasm } from "aead-wasm"
 
-// ── Multithread (dist/aead.mt.wasm, 9.1 KB) ──
+// ── Multithread (dist/aead.mt.wasm, 8.7 KB · 8 slots paralelos) ──
 // Navegador (requiere COOP/COEP para SharedArrayBuffer)
 const wasm = await AeadWasm.loadThreaded("/aead.mt.wasm")
 
-// Node.js / Worker: compartir módulo + memoria lineal
+// Node.js / Worker: compartir módulo + memoria lineal (264 págs)
 import { Worker } from "node:worker_threads"
 const worker = new Worker("./crypto-worker.mjs", {
   workerData: {
     wasmModule: wasm.getModule(),
-    sharedMemory: wasm.getMemory() // WebAssembly.Memory (shared: true)
+    sharedMemory: wasm.getMemory() // WebAssembly.Memory({ initial: 264, maximum: 264, shared: true })
   }
 })`
 
@@ -104,7 +104,7 @@ import { AeadWasm, ChaCha20Poly1305 } from "aead-wasm"
 const { wasmModule, sharedMemory, key, nonce, data } = workerData
 
 // Instancia usando la MISMA SharedArrayBuffer del hilo principal
-// (--zeroFilledMemory evita borrar datos activos y arena_lock sincroniza I/O)
+// (cada worker recibe automáticamente su propio slot I/O sin contención)
 await AeadWasm.fromModule(wasmModule, {
   env: { memory: sharedMemory }
 })
@@ -116,11 +116,11 @@ const LOCK_SNIPPET = `import { AeadWasm } from "aead-wasm"
 
 const wasm = AeadWasm.getInstance()
 console.log(wasm.getArenaStats())
-// → { used: 0, capacity: 65536, locked: false, threaded: true }
+// → { used: 0, capacity: 16384 | 65536, locked: false, threaded: true, slots: 8 }
 
-// Lock manual opcional al operar directo sobre WasmAllocator:
+// Lock manual opcional por slot (por defecto Slot 0):
 // • ST: tryLock() retorna false (y lock() lanza Error) si está ocupado
-// • MT: lock() espera en spinlock atómico hasta que el otro hilo libere
+// • MT: lockSlot(s) espera en spinlock atómico; los demás slots siguen libres
 if (wasm.tryLock()) {
   try {
     wasm.getAllocator().writeInput(new Uint8Array([1, 2, 3, 4]), 0)
@@ -182,7 +182,7 @@ export function DocsPage(props: DocsPageProps) {
         <section class={styles.card}>
           <div class={styles.cardHeader}>
             <h2 class={styles.cardTitle}>1. Instalación e init Single-Thread</h2>
-            <span class={styles.cardTag}>aead.wasm · 8.1 KB</span>
+            <span class={styles.cardTag}>aead.wasm · 8.3 KB</span>
           </div>
           <p class={styles.prose}>
             Usa la variante single-thread por defecto cuando operes en el hilo principal o quieras cero overhead de instrucciones atómicas.
@@ -194,10 +194,10 @@ export function DocsPage(props: DocsPageProps) {
         <section class={styles.card}>
           <div class={styles.cardHeader}>
             <h2 class={styles.cardTitle}>2. Inicialización Multithread (MT)</h2>
-            <span class={styles.cardTag}>aead.mt.wasm · 9.1 KB</span>
+            <span class={styles.cardTag}>aead.mt.wasm · 8.7 KB</span>
           </div>
           <p class={styles.prose}>
-            Carga el binario con soporte de hilos y <code style={{ color: "var(--gold-mono)" }}>SharedArrayBuffer</code> para compartir la memoria lineal entre múltiples workers sin duplicarla.
+            Carga el binario con soporte de hilos y <code style={{ color: "var(--gold-mono)" }}>SharedArrayBuffer</code> (8 slots paralelos, 264 págs) para escalar sin contención entre múltiples workers.
           </p>
           <CodeBlock lang="typescript" code={INIT_MT_SNIPPET} />
         </section>
@@ -205,21 +205,21 @@ export function DocsPage(props: DocsPageProps) {
         <section class={styles.card}>
           <div class={styles.cardHeader}>
             <h2 class={styles.cardTitle}>3. Ejecución en Workers (MT)</h2>
-            <span class={styles.cardTag}>SharedArrayBuffer</span>
+            <span class={styles.cardTag}>8 Slots · SharedArrayBuffer</span>
           </div>
           <p class={styles.prose}>
-            Cada worker instancia el módulo mediante <code style={{ color: "var(--gold-mono)" }}>AeadWasm.fromModule()</code> reutilizando la misma memoria compartida de 34 páginas.
+            Cada worker instancia el módulo mediante <code style={{ color: "var(--gold-mono)" }}>AeadWasm.fromModule()</code> reutilizando la misma memoria compartida de 264 páginas con slot dedicado.
           </p>
           <CodeBlock lang="typescript" code={WORKER_MT_SNIPPET} />
         </section>
 
         <section class={styles.card}>
           <div class={styles.cardHeader}>
-            <h2 class={styles.cardTitle}>4. Lock de Memoria y Arena</h2>
-            <span class={styles.cardTag}>arena_lock · Zero-Alloc</span>
+            <h2 class={styles.cardTitle}>4. Pool Multi-Slot, Lock y Arena</h2>
+            <span class={styles.cardTag}>Atomics · Zero-Alloc</span>
           </div>
           <p class={styles.prose}>
-            El wrapper adquiere el lock automáticamente en cada operación. En modo MT usa spinlock atómico; en modo ST evita sobreescrituras lanzando un error si la memoria está ocupada.
+            El wrapper adquiere un slot libre automáticamente con <code style={{ color: "var(--gold-mono)" }}>Atomics.compareExchange</code> sin atómicos internos en Arena; en modo ST lanza error inmediato ante colisión.
           </p>
           <CodeBlock lang="typescript" code={LOCK_SNIPPET} />
         </section>
@@ -284,18 +284,18 @@ export function DocsPage(props: DocsPageProps) {
                 <tr>
                   <td class={styles.nameCell}>dist/aead.wasm</td>
                   <td class={styles.monoCell}>release</td>
-                  <td class={styles.monoCell}>8.1 KB</td>
-                  <td>ArrayBuffer (34 págs)</td>
-                  <td>Guardia reentrada JS/WASM (fail-fast)</td>
+                  <td class={styles.monoCell}>8.3 KB</td>
+                  <td>ArrayBuffer (34 págs · 1 slot)</td>
+                  <td>Guardia reentrada JS (fail-fast)</td>
                   <td>Hilo principal, SSR/Node o Workers independientes</td>
                 </tr>
                 <tr>
                   <td class={styles.nameCell}>dist/aead.mt.wasm</td>
                   <td class={styles.monoCell}>release-mt</td>
-                  <td class={styles.monoCell}>9.1 KB</td>
-                  <td>SharedArrayBuffer (importada)</td>
-                  <td>Spinlock atómico (atomic.cmpxchg)</td>
-                  <td>Pool de Workers compartiendo la misma memoria WASM</td>
+                  <td class={styles.monoCell}>8.7 KB</td>
+                  <td>SharedArrayBuffer (264 págs · 8 slots)</td>
+                  <td>Pool de 8 slots (Atomics sin contención)</td>
+                  <td>Pool de Workers paralelos (2.5x–2.9x speedup multi-core)</td>
                 </tr>
               </tbody>
             </table>

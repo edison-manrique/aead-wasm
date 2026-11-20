@@ -18,6 +18,20 @@
       "initialMemory": 34,
       "maximumMemory": 34,
       "runtime": "stub"
+    },
+    "release-mt": {
+      "outFile": "dist/aead.mt.wasm",
+      "optimizeLevel": 3,
+      "shrinkLevel": 2,
+      "converge": true,
+      "noAssert": true,
+      "initialMemory": 34,
+      "maximumMemory": 34,
+      "sharedMemory": true,
+      "importMemory": true,
+      "zeroFilledMemory": true,
+      "enable": ["threads"],
+      "runtime": "stub"
     }
   },
   "options": {}

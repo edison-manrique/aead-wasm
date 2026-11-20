@@ -4,42 +4,52 @@ import fs from "node:fs"
 import path from "node:path"
 
 /**
- * Sirve `dist/aead.wasm` en `/aead.wasm` durante el desarrollo y lo emite en
- * la raíz del bundle (`dist-app/aead.wasm`) al compilar para producción.
+ * Sirve `dist/aead.wasm` y `dist/aead.mt.wasm` durante el desarrollo y los
+ * emite en la raíz del bundle (`dist-app/`) al compilar para producción.
  */
 function aeadWasmPlugin(): Plugin {
-  const wasmSource = path.resolve(process.cwd(), "dist", "aead.wasm")
+  const assets = [
+    { fileName: "aead.wasm", source: path.resolve(process.cwd(), "dist", "aead.wasm") },
+    { fileName: "aead.mt.wasm", source: path.resolve(process.cwd(), "dist", "aead.mt.wasm") }
+  ]
 
   return {
     name: "aead-wasm-asset",
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        if (req.url === "/aead.wasm" || req.url === "/dist/aead.wasm") {
-          if (!fs.existsSync(wasmSource)) {
+        const cleanPath = (req.url || "").split("?")[0]
+        const match = assets.find(
+          (a) => cleanPath.endsWith(`/${a.fileName}`) || cleanPath.endsWith(`/dist/${a.fileName}`)
+        )
+        if (match) {
+          if (!fs.existsSync(match.source)) {
             res.statusCode = 404
-            res.end("aead.wasm not built yet. Run npm run asbuild.")
+            res.end(`${match.fileName} not built yet. Run npm run asbuild.`)
             return
           }
           res.setHeader("Content-Type", "application/wasm")
-          fs.createReadStream(wasmSource).pipe(res)
+          fs.createReadStream(match.source).pipe(res)
           return
         }
         next()
       })
     },
     generateBundle() {
-      if (fs.existsSync(wasmSource)) {
-        this.emitFile({
-          type: "asset",
-          fileName: "aead.wasm",
-          source: fs.readFileSync(wasmSource)
-        })
+      for (const asset of assets) {
+        if (fs.existsSync(asset.source)) {
+          this.emitFile({
+            type: "asset",
+            fileName: asset.fileName,
+            source: fs.readFileSync(asset.source)
+          })
+        }
       }
     }
   }
 }
 
 export default defineConfig({
+  base: process.env.VITE_BASE_PATH || "/",
   plugins: [solidPlugin(), aeadWasmPlugin()],
   resolve: {
     alias: {

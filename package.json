@@ -22,7 +22,9 @@
     "LICENSE"
   ],
   "scripts": {
-    "asbuild": "asc assembly/index.ts --target release",
+    "asbuild:st": "asc assembly/index.ts --target release",
+    "asbuild:mt": "asc assembly/index.ts --target release-mt",
+    "asbuild": "npm run asbuild:st && npm run asbuild:mt",
     "asbuild:debug": "asc assembly/index.ts --target debug",
     "build:ts": "esbuild src/index.ts --bundle --format=esm --minify --platform=browser --outfile=dist/index.js && tsc --emitDeclarationOnly",
     "build:app": "vite build",
@@ -31,7 +33,7 @@
     "start": "tsx examples/server.ts",
     "lint": "tsc --noEmit && tsc -p playground/tsconfig.json --noEmit",
     "typecheck": "tsc --noEmit && tsc -p playground/tsconfig.json --noEmit",
-    "test": "node --test",
+    "test": "tsx test/verify-builds.ts",
     "bench": "tsx test/bench.ts",
     "prepublishOnly": "npm run build",
     "examples": "vite --host 0.0.0.0 --port 3000"

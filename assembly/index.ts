@@ -3,15 +3,45 @@
  *  index.ts — Punto de entrada del módulo WASM (aead-wasm)
  * ═══════════════════════════════════════════════════════════════════════════
  *
- * Re-exporta TODAS las funciones criptográficas y las regiones de memoria.
- * Compilado por `asc assembly/index.ts --target release` (runtime `stub`).
+ * Re-exporta TODAS las funciones criptográficas, regiones de memoria I/O y
+ * primitivas de sincronización/lock de `Arena`.
+ * Compilado en dos variantes:
+ *  • Single-thread (`--target release`    → dist/aead.wasm)
+ *  • Multithread   (`--target release-mt` → dist/aead.mt.wasm)
  *
  * 100% API DE PUNTEROS (zero-alloc) y nombres en `snake_case`. La conversión
  * Uint8Array ↔ puntero y las validaciones de longitud viven en el wrapper TS.
  */
+import { Arena } from "./arena"
 
 // ── Memoria / I/O (el wrapper copia aquí los datos del usuario) ────────────
-export { PARAM_IN_PTR, PARAM_IN_SIZE, PARAM_OUT_PTR, PARAM_OUT_SIZE } from "./memory"
+export { PARAM_IN_PTR, PARAM_IN_SIZE, PARAM_OUT_PTR, PARAM_OUT_SIZE } from "./arena"
+
+// ── Control de Arena & Lock de memoria (evita sobreescrituras concurrentes) ─
+export function arena_lock(): void {
+  Arena.lock()
+}
+export function arena_try_lock(): bool {
+  return Arena.tryLock()
+}
+export function arena_unlock(): void {
+  Arena.unlock()
+}
+export function arena_is_locked(): bool {
+  return Arena.isLocked()
+}
+export function arena_used(): usize {
+  return Arena.used()
+}
+export function arena_capacity(): usize {
+  return Arena.capacity()
+}
+export function arena_is_threaded(): bool {
+  return Arena.isThreaded()
+}
+export function arena_reset(): void {
+  Arena.reset()
+}
 
 // ── ChaCha20 & XChaCha20 (cifradores de flujo, one-shot) ───────────────────
 export { chacha20_encrypt_ptr, chacha20_decrypt_ptr, xchacha20_encrypt_ptr, xchacha20_decrypt_ptr } from "./chacha"

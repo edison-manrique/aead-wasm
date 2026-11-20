@@ -1,4 +1,4 @@
-import { AlertTriangle, ShieldCheck, ShieldAlert, KeyRound, Lock, Eraser } from "lucide-solid"
+import { AlertTriangle, ShieldCheck, ShieldAlert, KeyRound, Lock, Eraser, Cpu, GlobeLock } from "lucide-solid"
 import type { AlgoPageMeta } from "../types/crypto"
 import shared from "../styles/PageShared.module.css"
 import styles from "./SecurityPage.module.css"
@@ -98,6 +98,47 @@ export function SecurityPage(props: SecurityPageProps) {
         <section class={styles.card}>
           <div class={styles.cardHeader}>
             <div class={styles.titleGroup}>
+              <span class={styles.iconOk}>
+                <Cpu size={15} />
+              </span>
+              <h2 class={styles.cardTitle}>Lock de Memoria en Arena (ST vs MT)</h2>
+            </div>
+            <span class={`${styles.levelText} ${styles.levelOk}`}>Concurrencia</span>
+          </div>
+          <p class={styles.body}>
+            La clase estática <code>Arena</code> protege los buffers planos <code>PARAM_IN</code> y <code>PARAM_OUT</code> para evitar que una segunda llamada sobrescriba memoria mientras hay trabajo en curso:
+          </p>
+          <ul class={styles.list}>
+            <li>
+              <strong>Single-Thread (aead.wasm):</strong> <code>tryLock()</code> detecta colisión de I/O y lanza error inmediato antes de tocar <code>PARAM_IN</code>.
+            </li>
+            <li>
+              <strong>Multithread (aead.mt.wasm):</strong> <code>arena_lock()</code> espera mediante spinlock atómico (<code>atomic.cmpxchg</code>) separado del spinlock interno del bump-pointer (sin self-deadlock).
+            </li>
+          </ul>
+        </section>
+
+        <section class={styles.card}>
+          <div class={styles.cardHeader}>
+            <div class={styles.titleGroup}>
+              <span class={styles.iconWarn}>
+                <GlobeLock size={15} />
+              </span>
+              <h2 class={styles.cardTitle}>Aislamiento Multithread (COOP / COEP)</h2>
+            </div>
+            <span class={`${styles.levelText} ${styles.levelWarn}`}>Browser MT</span>
+          </div>
+          <p class={styles.body}>
+            La variante multithread (<code>aead.mt.wasm</code>) utiliza <code>SharedArrayBuffer</code>, por lo que en navegadores exige Cross-Origin Isolation. En Workers secundarios se compila con <code>--zeroFilledMemory</code> para que <code>fromModule()</code> nunca borre memoria activa.
+          </p>
+          <div class={styles.ruleBox}>
+            Cross-Origin-Opener-Policy: same-origin · Cross-Origin-Embedder-Policy: require-corp
+          </div>
+        </section>
+
+        <section class={styles.card}>
+          <div class={styles.cardHeader}>
+            <div class={styles.titleGroup}>
               <span class={styles.iconWarn}>
                 <KeyRound size={15} />
               </span>
@@ -121,12 +162,12 @@ export function SecurityPage(props: SecurityPageProps) {
               <span class={styles.iconOk}>
                 <Eraser size={15} />
               </span>
-              <h2 class={styles.cardTitle}>Validación y exención de auditoría</h2>
+              <h2 class={styles.cardTitle}>Validación ST/MT y exención de auditoría</h2>
             </div>
             <span class={`${styles.levelText} ${styles.levelOk}`}>RFC 8439</span>
           </div>
           <p class={styles.body}>
-            La correctitud está validada contra los vectores oficiales RFC 8439 (§A.3, §2.3.2/§2.4.2, §A.5) y XChaCha20-Poly1305 (128 tests funcionales + 26 de estrés zero-alloc con crecimiento WASM Δ 0 B).
+            La correctitud está verificada en ambas compilaciones (<code>aead.wasm</code> y <code>aead.mt.wasm</code>) contra vectores oficiales RFC 8439, streaming &gt; 1 MB y 4 Worker Threads concurrentes compartiendo <code>SharedArrayBuffer</code> sin corrupción.
           </p>
           <div class={styles.ruleBox}>
             Aviso: esta implementación no cuenta con auditoría formal externa; evalúala de forma independiente antes de emplearla en infraestructura crítica.

@@ -46,8 +46,9 @@ export function App() {
     window.addEventListener("hashchange", onHashChange)
     onCleanup(() => window.removeEventListener("hashchange", onHashChange))
 
+    const wasmUrl = `${import.meta.env.BASE_URL}aead.wasm`
     try {
-      await AeadWasm.load("/aead.wasm")
+      await AeadWasm.load(wasmUrl)
       setWasmStatus("ready")
     } catch (err) {
       setWasmStatus("error")
@@ -76,7 +77,7 @@ export function App() {
           <Show when={wasmError()}>
             {(err) => (
               <div class={styles.errorBanner}>
-                No se pudo inicializar el módulo WebAssembly (/aead.wasm): {err()}
+                No se pudo inicializar el módulo WebAssembly ({`${import.meta.env.BASE_URL}aead.wasm`}): {err()}
               </div>
             )}
           </Show>

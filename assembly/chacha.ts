@@ -8,7 +8,7 @@
  *
  * 100% ZERO-ALLOC / SOLO PUNTEROS:
  *  • Sin Uint8Array ni `new` — los contextos son structs sobre puntero
- *    (changetype sobre la arena `Memory`).
+ *    (changetype sobre la arena `Arena`).
  *  • Sin `throw` (runtime minimal) — las validaciones de longitud de clave/nonce
  *    las hace el wrapper TypeScript ANTES de llamar al WASM. El núcleo opera
  *    sobre punteros crudos y confía en el caller.
@@ -43,7 +43,7 @@
  * Claves de rendimiento: doble ronda desenrollada (columnar + diagonal) por
  * iteración del bucle, máximo throughput en WebAssembly escalar (sin SIMD).
  */
-import { Memory } from "./memory"
+import { Arena } from "./arena"
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ⚡ NÚCLEO (HOT PATH) — validado, sin cambios
@@ -467,14 +467,14 @@ export class ChaCha20 {
 
   /**
    * [STREAMING · INIT] Fábrica desde punteros crudos — zero-alloc vía arena
-   * `Memory` (sin `new`). Carga la clave (32 B) y el nonce (12 B) en registros.
+   * `Arena` (sin `new`). Carga la clave (32 B) y el nonce (12 B) en registros.
    * Limpia el buffer de keystream recién alojado (basura de la arena).
    * El caller garantiza las longitudes (validadas en el wrapper TS).
    */
   static createFromPtr(kPtr: usize, nPtr: usize, counter: u32 = 0, rounds: i32 = 20): ChaCha20 {
-    let ctxPtr = Memory.alloc(offsetof<ChaCha20>())
+    let ctxPtr = Arena.alloc(offsetof<ChaCha20>())
     let ctx = changetype<ChaCha20>(ctxPtr)
-    ctx.blockPtr = Memory.alloc(64)
+    ctx.blockPtr = Arena.alloc(64)
     memory.fill(ctx.blockPtr, 0, 64) // limpiar basura de la arena (defensa en profundidad)
 
     ctx.k0 = load<u32>(kPtr, 0)
@@ -561,9 +561,9 @@ export class XChaCha20 {
    * El caller garantiza las longitudes (clave 32 B, nonce 24 B).
    */
   static createFromPtr(kPtr: usize, nPtr: usize, counter: u32 = 0, rounds: i32 = 20): XChaCha20 {
-    let ctxPtr = Memory.alloc(offsetof<XChaCha20>())
+    let ctxPtr = Arena.alloc(offsetof<XChaCha20>())
     let ctx = changetype<XChaCha20>(ctxPtr)
-    ctx.blockPtr = Memory.alloc(64)
+    ctx.blockPtr = Arena.alloc(64)
     let bPtr = ctx.blockPtr
 
     // Derivar subclave vía HChaCha20
@@ -633,11 +633,11 @@ export function chacha20_encrypt_ptr(
   inPtr: usize, outPtr: usize, len: u32,
   counter: u32
 ): void {
-  const marker = Memory.save()
+  const marker = Arena.save()
   const ctx = ChaCha20.createFromPtr(kPtr, nPtr, counter)
   ctx.encryptPtr(inPtr, outPtr, len)
   ctx.wipe() // limpiar keystream pendiente + clave/nonce (seguridad)
-  Memory.restore(marker)
+  Arena.restore(marker)
 }
 
 export function chacha20_decrypt_ptr(
@@ -654,11 +654,11 @@ export function xchacha20_encrypt_ptr(
   inPtr: usize, outPtr: usize, len: u32,
   counter: u32
 ): void {
-  const marker = Memory.save()
+  const marker = Arena.save()
   const ctx = XChaCha20.createFromPtr(kPtr, nPtr, counter)
   ctx.encryptPtr(inPtr, outPtr, len)
   ctx.wipe() // limpiar keystream pendiente + subclave/nonce (seguridad)
-  Memory.restore(marker)
+  Arena.restore(marker)
 }
 
 export function xchacha20_decrypt_ptr(

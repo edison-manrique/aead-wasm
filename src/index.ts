@@ -60,5 +60,5 @@ export { KEY_BYTES, NONCE_BYTES, XNONCE_BYTES, TAG_BYTES, BLOCK_BYTES } from "./
 export { bytesToHex, hexToBytes, toUint8Array, concatBytes } from "./types"
 
 // ── Tipos de dominio (separados para verbatimModuleSyntax / isolatedModules) ─
-export type { AeadVariant, Detached, AeadEncryptStream, AeadDecryptStream } from "./types"
+export type { AeadVariant, ArenaStats, Detached, AeadEncryptStream, AeadDecryptStream } from "./types"
 export type { RandomBytesGenerator } from "./csprng"

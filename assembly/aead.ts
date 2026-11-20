@@ -11,7 +11,7 @@
  *
  * 100% ZERO-ALLOC / SOLO PUNTEROS:
  *  • Sin Uint8Array ni `new` — el contexto streaming es un struct sobre puntero
- *    (changetype sobre la arena `Memory`).
+ *    (changetype sobre la arena `Arena`).
  *  • Sin `throw` (runtime minimal). `final_decrypt` retorna `false` si el tag
  *    es inválido o la entrada es corta (nunca aborta).
  *  • Funciones exportadas en `snake_case` por convención.
@@ -47,14 +47,14 @@
  *   debe descartarlo. Inherente al streaming de RFC 8439 (un solo tag final).
  *
  * ── GESTIÓN DE MEMORIA (arena bump con marco persistente) ─────────────────
- * `init_*` hace `Memory.save()` y NO restaura: el marco vive hasta `final_*`/
- * `free`, que hacen `Memory.restore(marker)` y liberan TODO de golpe. `update_*`
+ * `init_*` hace `Arena.save()` y NO restaura: el marco vive hasta `final_*`/
+ * `free`, que hacen `Arena.restore(marker)` y liberan TODO de golpe. `update_*`
  * NO aloca nada. Uso correcto: SECUENCIAL (cerrar con final/free antes de iniciar
  * otro stream, o anidar en orden LIFO).
  */
 import { ChaCha20, XChaCha20 } from "./chacha"
 import { Poly1305 } from "./poly1305"
-import { Memory } from "./memory"
+import { Arena } from "./arena"
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔧 HELPERS LIBRES (zero-alloc, reentrantes)
@@ -166,7 +166,7 @@ function wipe(tagBufPtr: usize, lenBufPtr: usize): void {
  * Contexto AEAD incremental como struct sobre puntero (zero-alloc, sin `new`).
  * Un único struct para ChaCha20-Poly1305 y XChaCha20-Poly1305 (flag `isX`).
  *
- *  marker     → punto de `Memory.save()` de init; `final`/`free` restauran aquí.
+ *  marker     → punto de `Arena.save()` de init; `final`/`free` restauran aquí.
  *  cipherPtr  → contexto ChaCha20/XChaCha20 (counter/blockPos persistentes).
  *  polyPtr    → contexto Poly1305 (estado persistente entre chunks).
  *  aadLen/ctLen → longitudes totales para el bloque final de longitudes.
@@ -203,7 +203,7 @@ class AeadStream {
 
   /**
    * [STREAMING · INIT] Reserva el marco y deriva authKey + estado Poly1305.
-   * Hace `Memory.save()` SIN restaurar (el marco vive hasta `final*`/`free`).
+   * Hace `Arena.save()` SIN restaurar (el marco vive hasta `final*`/`free`).
    * Reusa el cifrador para authKey (counter 0) y payload (counter 1+).
    */
   static initPtr(
@@ -211,9 +211,9 @@ class AeadStream {
     aadPtr: usize, aadLen: u32,
     isX: bool, mode: u32
   ): usize {
-    const marker = Memory.save()
+    const marker = Arena.save()
 
-    const aeadPtr = Memory.alloc(offsetof<AeadStream>())
+    const aeadPtr = Arena.alloc(offsetof<AeadStream>())
     const aead = changetype<AeadStream>(aeadPtr)
     aead.marker = marker
     aead.isX = isX
@@ -223,10 +223,10 @@ class AeadStream {
     aead.ctLen = 0
 
     // Buffers de trabajo (reusados en final)
-    const zeroPadPtr = Memory.alloc(16)
+    const zeroPadPtr = Arena.alloc(16)
     memory.fill(zeroPadPtr, 0, 16)
-    const lenBufPtr = Memory.alloc(16)
-    const tagBufPtr = Memory.alloc(16)
+    const lenBufPtr = Arena.alloc(16)
+    const tagBufPtr = Arena.alloc(16)
     aead.zeroPadPtr = zeroPadPtr
     aead.lenBufPtr = lenBufPtr
     aead.tagBufPtr = tagBufPtr
@@ -234,7 +234,7 @@ class AeadStream {
     // Cifrador (counter 0) y derivación de authKey in-place (32 B del bloque 0)
     const cipherPtr = cipherCreate(keyPtr, noncePtr, isX)
     aead.cipherPtr = cipherPtr
-    const authPtr = Memory.alloc(32)
+    const authPtr = Arena.alloc(32)
     memory.fill(authPtr, 0, 32)
     cipherEncrypt(cipherPtr, authPtr, authPtr, 32, isX) // usa el bloque 0 (counter 0)
     cipherFinishBlock(cipherPtr, isX) // ← completa el bloque 0 → counter 1, blockPos 0 (payload empieza en bloque 1)
@@ -275,7 +275,7 @@ class AeadStream {
     polyFinal(this.polyPtr, this.aadLen, this.ctLen, this.zeroPadPtr, this.lenBufPtr, this.tagBufPtr)
     memory.copy(tagOutPtr, this.tagBufPtr, 16) // copiar tag ANTES de limpiar
     this.wipeAll()
-    Memory.restore(this.marker)
+    Arena.restore(this.marker)
   }
 
   /**
@@ -288,7 +288,7 @@ class AeadStream {
     polyFinal(this.polyPtr, this.aadLen, this.ctLen, this.zeroPadPtr, this.lenBufPtr, this.tagBufPtr)
     const valid = secureEqual16(this.tagBufPtr, expectedPtr) // comparar ANTES de limpiar
     this.wipeAll()
-    Memory.restore(this.marker)
+    Arena.restore(this.marker)
     return valid
   }
 
@@ -298,7 +298,7 @@ class AeadStream {
     if (aead.finished) return
     aead.finished = true
     aead.wipeAll() // consistente con final* (antes free no limpiaba cipher/poly)
-    Memory.restore(aead.marker)
+    Arena.restore(aead.marker)
   }
 
   // ── ONE-SHOT (construidos sobre el path streaming) ──

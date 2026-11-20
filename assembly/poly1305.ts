@@ -10,7 +10,7 @@
  * 100% ZERO-ALLOC / SOLO PUNTEROS:
  *  • Sin Uint8Array ni objetos intermedios — toda la API opera sobre punteros
  *    crudos (usize) y longitudes (u32).
- *  • El contexto y su buffer de 16 bytes se reservan en la arena `Memory`
+ *  • El contexto y su buffer de 16 bytes se reservan en la arena `Arena`
  *    (struct sobre puntero vía changetype), sin `new` en el heap.
  *  • Cada `createFromPtr` obtiene su propio contexto → reentrante.
  *
@@ -31,7 +31,7 @@
  *
  * ── ONE-SHOT (mensajes pequeños) ──────────────────────────────────────────
  * `mac_ptr(msgPtr, msgLen, keyPtr, outPtr)` hace init+update+digest en una
- * llamada, con `Memory.save()/restore()` (libera el contexto) y `wipe()`
+ * llamada, con `Arena.save()/restore()` (libera el contexto) y `wipe()`
  * (limpia el material sensible) → uso standalone seguro y sin leaks.
  *
  * Claves de rendimiento (validadas):
@@ -40,7 +40,7 @@
  *  • `processPartial` usa `this.r0` directamente (operandos de memoria) para NO
  *    exceder los 16 registros x86-64 (evita register spilling en el bloque final).
  */
-import { Memory } from "./memory"
+import { Arena } from "./arena"
 
 @final
 @unmanaged
@@ -79,7 +79,7 @@ export class Poly1305 {
    * [STREAMING · INIT] Crea un contexto Poly1305 desde un puntero a la clave
    * de 32 bytes — zero-alloc vía arena (sin `new`).
    *
-   * Reserva el contexto y su buffer de 16 bytes en `Memory`, clampea "r"
+   * Reserva el contexto y su buffer de 16 bytes en `Arena`, clampea "r"
    * (RFC 8439 §2.5), precomputa s_i = r_i·5 y carga el padding "s".
    * Punto de entrada del flujo streaming: createFromPtr → update × N → digest.
    *
@@ -87,9 +87,9 @@ export class Poly1305 {
    */
   @inline
   static createFromPtr(keyPtr: usize): Poly1305 {
-    let ctxPtr = Memory.alloc(offsetof<Poly1305>())
+    let ctxPtr = Arena.alloc(offsetof<Poly1305>())
     let ctx = changetype<Poly1305>(ctxPtr)
-    ctx.bufPtr = Memory.alloc(16)
+    ctx.bufPtr = Arena.alloc(16)
 
     ctx.pos = 0
     ctx.finished = false
@@ -288,7 +288,7 @@ export class Poly1305 {
   /**
    * [ONE-SHOT] Calcula el tag Poly1305 de msg[0..msgLen) con clave de 32 bytes
    * y lo escribe en outPtr (16 B). Equivale a createFromPtr + update + digest,
-   * pero con `Memory.save()/restore()` (libera el contexto de la arena) y
+   * pero con `Arena.save()/restore()` (libera el contexto de la arena) y
    * `wipe()` (limpia el material sensible) → uso standalone seguro y sin leaks.
    *
    * @param msgPtr Puntero al mensaje.
@@ -297,12 +297,12 @@ export class Poly1305 {
    * @param outPtr Puntero al buffer de salida del tag (16 bytes).
    */
   static mac_ptr(msgPtr: usize, msgLen: u32, keyPtr: usize, outPtr: usize): void {
-    const marker = Memory.save()
+    const marker = Arena.save()
     const p = Poly1305.createFromPtr(keyPtr)
     p.update(msgPtr, msgLen)
     p.digest(outPtr)
     p.wipe() // limpiar material sensible (clave r, acumulador h, buffer parcial)
-    Memory.restore(marker) // liberar el contexto de la arena
+    Arena.restore(marker) // liberar el contexto de la arena
   }
 
   // ═════════════════════════════════════════════════════════════════════════

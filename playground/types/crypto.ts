@@ -91,19 +91,19 @@ export const ALGO_PAGES: readonly AlgoPageMeta[] = [
     nonceBytes: null,
     tagBytes: null,
     description:
-      "Garantías criptográficas, riesgos de mal uso (reutilización de nonce, cifrado sin MAC, streaming decrypt) y mitigaciones implementadas en WASM.",
+      "Garantías criptográficas, lock de Arena contra sobreescrituras (ST/MT), requisitos COOP/COEP y mitigaciones en WebAssembly.",
     supportsStreamingFiles: false
   },
   {
     id: "docs",
     name: "Documentación",
     category: "Docs",
-    standard: "Guía de uso v1.1",
+    standard: "Guía ST & MT v1.1",
     keyBytes: null,
     nonceBytes: null,
     tagBytes: null,
     description:
-      "Referencia de integración TypeScript/WASM: inicialización, AEAD, streaming de archivos, cifradores de flujo y arquitectura zero-alloc.",
+      "Referencia de integración TypeScript/WASM: inicialización Single-Thread y Multithread, Workers, Arena Lock, AEAD y streaming.",
     supportsStreamingFiles: false
   }
 ] as const

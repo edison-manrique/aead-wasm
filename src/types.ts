@@ -81,6 +81,16 @@ export interface AsmExports {
 
   // ── Liberación de un stream sin finalizar (opcional; ver nota abajo) ──
   aead_free_ptr?: (ctxPtr: number) => void
+
+  // ── Control de Arena & Lock de memoria ──
+  arena_lock?: () => void
+  arena_try_lock?: () => number
+  arena_unlock?: () => void
+  arena_is_locked?: () => number
+  arena_used?: () => number
+  arena_capacity?: () => number
+  arena_is_threaded?: () => number
+  arena_reset?: () => void
 }
 
 // ── Constantes criptográficas ───────────────────────────────────────────────
@@ -93,6 +103,14 @@ export const BLOCK_BYTES = 64 // bloque ChaCha20
 // ── Tipos de dominio ────────────────────────────────────────────────────────
 /** Variante de AEAD (selección de algoritmo en la API de bajo nivel). */
 export type AeadVariant = "chacha" | "xchacha"
+
+/** Estado actual de la Arena WASM y su lock de concurrencia. */
+export interface ArenaStats {
+  used: number
+  capacity: number
+  locked: boolean
+  threaded: boolean
+}
 
 /** Resultado "detached": ciphertext y tag por separado. */
 export interface Detached {

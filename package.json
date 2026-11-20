@@ -25,13 +25,16 @@
     "asbuild": "asc assembly/index.ts --target release",
     "asbuild:debug": "asc assembly/index.ts --target debug",
     "build:ts": "esbuild src/index.ts --bundle --format=esm --minify --platform=browser --outfile=dist/index.js && tsc --emitDeclarationOnly",
-    "build": "npm run asbuild && npm run build:ts",
-    "typecheck": "tsc --noEmit",
-    "test": "bun test",
-    "test:memory": "bun test test/memory.test.ts",
-    "bench": "bun test/bench.ts",
+    "build:app": "vite build",
+    "build": "npm run asbuild && npm run build:ts && npm run build:app",
+    "dev": "vite --host 0.0.0.0 --port 3000",
+    "start": "tsx examples/server.ts",
+    "lint": "tsc --noEmit && tsc -p playground/tsconfig.json --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p playground/tsconfig.json --noEmit",
+    "test": "node --test",
+    "bench": "tsx test/bench.ts",
     "prepublishOnly": "npm run build",
-    "examples": "bun examples/demo.js"
+    "examples": "vite --host 0.0.0.0 --port 3000"
   },
   "keywords": [
     "wasm",
@@ -77,5 +80,18 @@
   "homepage": "https://github.com/edison-manrique/aead-wasm#readme",
   "engines": {
     "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.6",
+    "assemblyscript": "^0.28.20",
+    "esbuild": "^0.28.2",
+    "express": "^5.3.0",
+    "lucide-solid": "^1.77.0",
+    "solid-js": "^1.9.18",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vite-plugin-solid": "^2.11.17"
   }
 }

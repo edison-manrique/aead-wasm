@@ -14,3 +14,8 @@ scratch/
 # OS
 .DS_Store
 Thumbs.db
+
+# AI Studio & build de playground
+.aistudio/
+dist-app/
+

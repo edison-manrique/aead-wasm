@@ -1,24 +1,24 @@
-const PORT = 3000
+import express from "express"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
 
-Bun.serve({
-  port: PORT,
-  async fetch(req) {
-    const url = new URL(req.url)
+const PORT = Number(process.env.PORT) || 3000
+const HOST = "0.0.0.0"
 
-    // Si acceden a la raíz, redirigimos a la ruta del ejemplo
-    const pathname = url.pathname === "/" ? "/examples/index.html" : url.pathname
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const rootDir = path.resolve(__dirname, "..")
+const appDistDir = path.join(rootDir, "dist-app")
 
-    // Construimos la ruta del archivo subiendo un nivel (..)
-    const filePath = `${import.meta.dir}/..${pathname}`
-    const file = Bun.file(filePath)
+const app = express()
 
-    // Si el archivo existe, Bun lo sirve determinando el Content-Type automáticamente
-    if (await file.exists()) {
-      return new Response(file)
-    }
+app.use(express.static(appDistDir))
+app.use("/dist", express.static(path.join(rootDir, "dist")))
 
-    return new Response(`404 Not Found: ${url.pathname}`, { status: 404 })
-  }
+app.get("/{*splat}", (_req, res) => {
+  res.sendFile(path.join(appDistDir, "index.html"))
 })
 
-console.log(`🚀 Servidor de ejemplo AEAD-WASM ejecutándose en http://localhost:${PORT}/examples/index.html`)
+app.listen(PORT, HOST, () => {
+  console.log(`🚀 AEAD-WASM Crypto Lab ejecutándose en http://${HOST}:${PORT}/`)
+})
